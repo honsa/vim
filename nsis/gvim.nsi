@@ -167,9 +167,11 @@ Page custom SetCustom ValidateCustom
     !include "lang\danish.nsi"
     !include "lang\dutch.nsi"
     !include "lang\german.nsi"
+    !include "lang\greek.nsi"
     !include "lang\italian.nsi"
     !include "lang\japanese.nsi"
     !include "lang\russian.nsi"
+    !include "lang\serbian.nsi"
     !include "lang\simpchinese.nsi"
     !include "lang\tradchinese.nsi"
     !include "lang\turkish.nsi"
@@ -397,6 +399,9 @@ Section "$(str_section_exe)" id_section_exe
 	SetOutPath $0\indent
 	File ${VIMRT}\indent\*.*
 
+	SetOutPath $0\keymap
+	File ${VIMRT}\keymap\*.*
+
 	SetOutPath $0\macros
 	File /r ${VIMRT}\macros\*.*
 
@@ -416,7 +421,7 @@ Section "$(str_section_exe)" id_section_exe
 	File ${VIMSRC}\vim.ico
 
 	SetOutPath $0\syntax
-	File /r ${VIMRT}\syntax\*.*
+	File /r /x testdir /x generator ${VIMRT}\syntax\*.*
 
 	SetOutPath $0\spell
 	File ${VIMRT}\spell\*.txt

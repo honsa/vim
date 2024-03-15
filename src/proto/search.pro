@@ -1,7 +1,6 @@
 /* search.c */
 int search_regcomp(char_u *pat, char_u **used_pat, int pat_save, int pat_use, int options, regmmatch_T *regmatch);
 char_u *get_search_pat(void);
-char_u *reverse_text(char_u *s);
 void save_re_pat(int idx, char_u *pat, int magic);
 void save_search_patterns(void);
 void restore_search_patterns(void);
@@ -33,7 +32,7 @@ int check_linecomment(char_u *line);
 void showmatch(int c);
 int current_search(long count, int forward);
 int linewhite(linenr_T lnum);
-void find_pattern_in_path(char_u *ptr, int dir, int len, int whole, int skip_comments, int type, long count, int action, linenr_T start_lnum, linenr_T end_lnum);
+void find_pattern_in_path(char_u *ptr, int dir, int len, int whole, int skip_comments, int type, long count, int action, linenr_T start_lnum, linenr_T end_lnum, int forceit);
 spat_T *get_spat(int idx);
 int get_spat_last_idx(void);
 void f_searchcount(typval_T *argvars, typval_T *rettv);

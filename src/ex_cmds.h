@@ -521,7 +521,7 @@ EXCMD(CMD_doautoall,	"doautoall",	ex_doautoall,
 	EX_EXTRA|EX_TRLBAR|EX_CMDWIN|EX_LOCK_OK,
 	ADDR_NONE),
 EXCMD(CMD_drop,		"drop",		ex_drop,
-	EX_FILES|EX_CMDARG|EX_NEEDARG|EX_ARGOPT|EX_TRLBAR,
+	EX_BANG|EX_FILES|EX_CMDARG|EX_NEEDARG|EX_ARGOPT|EX_TRLBAR,
 	ADDR_NONE),
 EXCMD(CMD_dsearch,	"dsearch",	ex_findpat,
 	EX_BANG|EX_RANGE|EX_DFLALL|EX_WHOLEFOLD|EX_EXTRA|EX_CMDWIN|EX_LOCK_OK,
@@ -1950,7 +1950,7 @@ struct exarg
     int		bad_char;	// BAD_KEEP, BAD_DROP or replacement byte
     int		useridx;	// user command index
     char	*errmsg;	// returned error message
-    char_u	*(*getline)(int, void *, int, getline_opt_T);
+    char_u	*(*ea_getline)(int, void *, int, getline_opt_T);
     void	*cookie;	// argument for getline()
 #ifdef FEAT_EVAL
     cstack_T	*cstack;	// condition stack for ":if" etc.
