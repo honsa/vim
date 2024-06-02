@@ -61,7 +61,7 @@ static void	nv_end(cmdarg_T *cap);
 static void	nv_dollar(cmdarg_T *cap);
 static void	nv_search(cmdarg_T *cap);
 static void	nv_next(cmdarg_T *cap);
-static int	normal_search(cmdarg_T *cap, int dir, char_u *pat, int opt, int *wrapped);
+static int	normal_search(cmdarg_T *cap, int dir, char_u *pat, size_t patlen, int opt, int *wrapped);
 static void	nv_csearch(cmdarg_T *cap);
 static void	nv_brackets(cmdarg_T *cap);
 static void	nv_percent(cmdarg_T *cap);
@@ -1708,6 +1708,7 @@ add_to_showcmd(int c)
     int		extra_len;
     int		overflow;
     int		i;
+    char_u	mbyte_buf[MB_MAXBYTES];
     static int	ignore[] =
     {
 #ifdef FEAT_GUI
@@ -1739,9 +1740,17 @@ add_to_showcmd(int c)
 	    if (ignore[i] == c)
 		return FALSE;
 
-    p = transchar(c);
-    if (*p == ' ')
-	STRCPY(p, "<20>");
+    if (c <= 0x7f || !vim_isprintc(c))
+    {
+	p = transchar(c);
+	if (*p == ' ')
+	    STRCPY(p, "<20>");
+    }
+    else
+    {
+	mbyte_buf[(*mb_char2bytes)(c, mbyte_buf)] = NUL;
+	p = mbyte_buf;
+    }
     old_len = (int)STRLEN(showcmd_buf);
     extra_len = (int)STRLEN(p);
     overflow = old_len + extra_len - SHOWCMD_COLS;
@@ -1810,7 +1819,7 @@ pop_showcmd(void)
     static void
 display_showcmd(void)
 {
-    int	    len = (int)STRLEN(showcmd_buf);
+    int	    len = vim_strsize(showcmd_buf);
 
     showcmd_is_clear = (len == 0);
     cursor_off();
@@ -2066,7 +2075,7 @@ nv_page(cmdarg_T *cap)
 	    goto_tabpage((int)cap->count0);
     }
     else
-	(void)onepage(cap->arg, cap->count1);
+	(void)pagescroll(cap->arg, cap->count1, FALSE);
 }
 
 /*
@@ -2160,6 +2169,7 @@ find_decl(
     int		flags_arg)	// flags passed to searchit()
 {
     char_u	*pat;
+    size_t	patlen;
     pos_T	old_pos;
     pos_T	par_pos;
     pos_T	found_pos;
@@ -2176,8 +2186,9 @@ find_decl(
 
     // Put "\V" before the pattern to avoid that the special meaning of "."
     // and "~" causes trouble.
-    sprintf((char *)pat, vim_iswordp(ptr) ? "\\V\\<%.*s\\>" : "\\V%.*s",
-								    len, ptr);
+    patlen = vim_snprintf((char *)pat, len + 7,
+	    vim_iswordp(ptr) ? "\\V\\<%.*s\\>" : "\\V%.*s", len, ptr);
+
     old_pos = curwin->w_cursor;
     save_p_ws = p_ws;
     save_p_scs = p_scs;
@@ -2206,7 +2217,7 @@ find_decl(
     for (;;)
     {
 	t = searchit(curwin, curbuf, &curwin->w_cursor, NULL, FORWARD,
-					  pat, 1L, searchflags, RE_LAST, NULL);
+					  pat, patlen, 1L, searchflags, RE_LAST, NULL);
 	if (curwin->w_cursor.lnum >= old_pos.lnum)
 	    t = FAIL;	// match after start is failure too
 
@@ -2303,10 +2314,12 @@ find_decl(
  *
  * Return OK if able to move cursor, FAIL otherwise.
  */
-    static int
+    int
 nv_screengo(oparg_T *oap, int dir, long dist)
 {
-    int		linelen = linetabsize(curwin, curwin->w_cursor.lnum);
+
+    int		linelen = linetabsize_no_outer(curwin, curwin->w_cursor.lnum);
+
     int		retval = OK;
     int		atend = FALSE;
     int		n;
@@ -2376,7 +2389,7 @@ nv_screengo(oparg_T *oap, int dir, long dist)
 		}
 		cursor_up_inner(curwin, 1);
 
-		linelen = linetabsize(curwin, curwin->w_cursor.lnum);
+		linelen = linetabsize_no_outer(curwin, curwin->w_cursor.lnum);
 		if (linelen > width1)
 		    curwin->w_curswant += (((linelen - width1 - 1) / width2)
 								+ 1) * width2;
@@ -2413,7 +2426,7 @@ nv_screengo(oparg_T *oap, int dir, long dist)
 		// clipped to column 0.
 		if (curwin->w_curswant >= width1)
 		    curwin->w_curswant -= width2;
-		linelen = linetabsize(curwin, curwin->w_cursor.lnum);
+		linelen = linetabsize_no_outer(curwin, curwin->w_cursor.lnum);
 	    }
 	}
       }
@@ -2469,65 +2482,6 @@ nv_scroll_line(cmdarg_T *cap)
 {
     if (!checkclearop(cap->oap))
 	scroll_redraw(cap->arg, cap->count1);
-}
-
-/*
- * Scroll "count" lines up or down, and redraw.
- */
-    void
-scroll_redraw(int up, long count)
-{
-    linenr_T	prev_topline = curwin->w_topline;
-    int		prev_skipcol = curwin->w_skipcol;
-#ifdef FEAT_DIFF
-    int		prev_topfill = curwin->w_topfill;
-#endif
-    linenr_T	prev_lnum = curwin->w_cursor.lnum;
-
-    if (up)
-	scrollup(count, TRUE);
-    else
-	scrolldown(count, TRUE);
-    if (get_scrolloff_value() > 0)
-    {
-	// Adjust the cursor position for 'scrolloff'.  Mark w_topline as
-	// valid, otherwise the screen jumps back at the end of the file.
-	cursor_correct();
-	check_cursor_moved(curwin);
-	curwin->w_valid |= VALID_TOPLINE;
-
-	// If moved back to where we were, at least move the cursor, otherwise
-	// we get stuck at one position.  Don't move the cursor up if the
-	// first line of the buffer is already on the screen
-	while (curwin->w_topline == prev_topline
-		&& curwin->w_skipcol == prev_skipcol
-#ifdef FEAT_DIFF
-		&& curwin->w_topfill == prev_topfill
-#endif
-		)
-	{
-	    if (up)
-	    {
-		if (curwin->w_cursor.lnum > prev_lnum
-			|| cursor_down(1L, FALSE) == FAIL)
-		    break;
-	    }
-	    else
-	    {
-		if (curwin->w_cursor.lnum < prev_lnum
-			|| prev_topline == 1L
-			|| cursor_up(1L, FALSE) == FAIL)
-		    break;
-	    }
-	    // Mark w_topline as valid, otherwise the screen jumps back at the
-	    // end of the file.
-	    check_cursor_moved(curwin);
-	    curwin->w_valid |= VALID_TOPLINE;
-	}
-    }
-    if (curwin->w_cursor.lnum != prev_lnum)
-	coladvance(curwin->w_curswant);
-    redraw_later(UPD_VALID);
 }
 
 /*
@@ -2641,7 +2595,7 @@ nv_zg_zw(cmdarg_T *cap, int nchar)
 	// off this fails and find_ident_under_cursor() is
 	// used below.
 	emsg_off++;
-	len = spell_move_to(curwin, FORWARD, TRUE, TRUE, NULL);
+	len = spell_move_to(curwin, FORWARD, SMT_ALL, TRUE, NULL);
 	emsg_off--;
 	if (len != 0 && curwin->w_cursor.col <= pos.col)
 	    ptr = ml_get_pos(&curwin->w_cursor);
@@ -3380,7 +3334,8 @@ nv_K_getcmd(
 	char_u		**ptr_arg,
 	int		n,
 	char_u		*buf,
-	unsigned	buflen)
+	size_t		bufsize,
+	size_t		*buflen)
 {
     char_u	*ptr = *ptr_arg;
     int		isman;
@@ -3390,6 +3345,7 @@ nv_K_getcmd(
     {
 	// in the help buffer
 	STRCPY(buf, "he! ");
+	*buflen = STRLEN_LITERAL("he! ");
 	return n;
     }
 
@@ -3397,10 +3353,9 @@ nv_K_getcmd(
     {
 	// 'keywordprog' is an ex command
 	if (cap->count0 != 0)
-	    vim_snprintf((char *)buf, buflen, "%s %ld", kp, cap->count0);
+	    *buflen = vim_snprintf((char *)buf, bufsize, "%s %ld ", kp, cap->count0);
 	else
-	    STRCPY(buf, kp);
-	STRCAT(buf, " ");
+	    *buflen = vim_snprintf((char *)buf, bufsize, "%s ", kp);
 	return n;
     }
 
@@ -3425,19 +3380,16 @@ nv_K_getcmd(
     isman = (STRCMP(kp, "man") == 0);
     isman_s = (STRCMP(kp, "man -s") == 0);
     if (cap->count0 != 0 && !(isman || isman_s))
-	sprintf((char *)buf, ".,.+%ld", cap->count0 - 1);
-
-    STRCAT(buf, "! ");
-    if (cap->count0 == 0 && isman_s)
-	STRCAT(buf, "man");
+	*buflen = vim_snprintf((char *)buf, bufsize, ".,.+%ld! ", cap->count0 - 1);
     else
-	STRCAT(buf, kp);
-    STRCAT(buf, " ");
+	*buflen = vim_snprintf((char *)buf, bufsize, "! ");
+
+    if (cap->count0 == 0 && isman_s)
+	*buflen += vim_snprintf((char *)buf + *buflen, bufsize - *buflen, "man ");
+    else
+	*buflen += vim_snprintf((char *)buf + *buflen, bufsize - *buflen, "%s ", kp);
     if (cap->count0 != 0 && (isman || isman_s))
-    {
-	sprintf((char *)buf + STRLEN(buf), "%ld", cap->count0);
-	STRCAT(buf, " ");
-    }
+	*buflen += vim_snprintf((char *)buf + *buflen, bufsize - *buflen, "%ld ", cap->count0);
 
     *ptr_arg = ptr;
     return n;
@@ -3456,7 +3408,8 @@ nv_ident(cmdarg_T *cap)
 {
     char_u	*ptr = NULL;
     char_u	*buf;
-    unsigned	buflen;
+    size_t	bufsize;
+    size_t	buflen;
     char_u	*newbuf;
     char_u	*p;
     char_u	*kp;		// value of 'keywordprg'
@@ -3511,11 +3464,12 @@ nv_ident(cmdarg_T *cap)
 	return;
     }
     kp_ex = (*kp == ':');
-    buflen = (unsigned)(n * 2 + 30 + STRLEN(kp));
-    buf = alloc(buflen);
+    bufsize = (size_t)(n * 2 + 30 + STRLEN(kp));
+    buf = alloc(bufsize);
     if (buf == NULL)
 	return;
     buf[0] = NUL;
+    buflen = 0;
 
     switch (cmdchar)
     {
@@ -3529,12 +3483,15 @@ nv_ident(cmdarg_T *cap)
 	    curwin->w_cursor.col = (colnr_T) (ptr - ml_get_curline());
 
 	    if (!g_cmd && vim_iswordp(ptr))
+	    {
 		STRCPY(buf, "\\<");
+		buflen = STRLEN_LITERAL("\\<");
+	    }
 	    no_smartcase = TRUE;	// don't use 'smartcase' now
 	    break;
 
 	case 'K':
-	    n = nv_K_getcmd(cap, kp, kp_help, kp_ex, &ptr, n, buf, buflen);
+	    n = nv_K_getcmd(cap, kp, kp_help, kp_ex, &ptr, n, buf, bufsize, &buflen);
 	    if (n == 0)
 		return;
 	    break;
@@ -3543,30 +3500,47 @@ nv_ident(cmdarg_T *cap)
 	    tag_cmd = TRUE;
 #ifdef FEAT_CSCOPE
 	    if (p_cst)
+	    {
 		STRCPY(buf, "cstag ");
+		buflen = STRLEN_LITERAL("cstag ");
+	    }
 	    else
 #endif
+	    {
 		STRCPY(buf, "ts ");
+		buflen = STRLEN_LITERAL("ts ");
+	    }
 	    break;
 
 	default:
 	    tag_cmd = TRUE;
 	    if (curbuf->b_help)
+	    {
 		STRCPY(buf, "he! ");
+		buflen = STRLEN_LITERAL("he! ");
+	    }
 	    else
 	    {
 		if (g_cmd)
+		{
 		    STRCPY(buf, "tj ");
+		    buflen = STRLEN_LITERAL("tj ");
+		}
 		else if (cap->count0 == 0)
+		{
 		    STRCPY(buf, "ta ");
+		    buflen = STRLEN_LITERAL("ta ");
+		}
 		else
-		    sprintf((char *)buf, ":%ldta ", cap->count0);
+		    buflen = vim_snprintf((char *)buf, bufsize, ":%ldta ", cap->count0);
 	    }
     }
 
     // Now grab the chars in the identifier
     if (cmdchar == 'K' && !kp_help)
     {
+	size_t plen;
+
 	ptr = vim_strnsave(ptr, n);
 	if (kp_ex)
 	    // Escape the argument properly for an Ex command
@@ -3580,7 +3554,8 @@ nv_ident(cmdarg_T *cap)
 	    vim_free(buf);
 	    return;
 	}
-	newbuf = vim_realloc(buf, STRLEN(buf) + STRLEN(p) + 1);
+	plen = STRLEN(p);
+	newbuf = vim_realloc(buf, buflen + plen + 1);
 	if (newbuf == NULL)
 	{
 	    vim_free(buf);
@@ -3588,7 +3563,8 @@ nv_ident(cmdarg_T *cap)
 	    return;
 	}
 	buf = newbuf;
-	STRCAT(buf, p);
+	STRCPY(buf + buflen, p);
+	buflen += plen;
 	vim_free(p);
     }
     else
@@ -3608,12 +3584,13 @@ nv_ident(cmdarg_T *cap)
 	else
 	    aux_ptr = (char_u *)"\\|\"\n*?[";
 
-	p = buf + STRLEN(buf);
+	p = buf + buflen;
 	while (n-- > 0)
 	{
 	    // put a backslash before \ and some others
 	    if (vim_strchr(aux_ptr, *ptr) != NULL)
 		*p++ = '\\';
+
 	    // When current byte is a part of multibyte character, copy all
 	    // bytes of that character.
 	    if (has_mbyte)
@@ -3627,6 +3604,7 @@ nv_ident(cmdarg_T *cap)
 	    *p++ = *ptr++;
 	}
 	*p = NUL;
+	buflen = p - buf;
     }
 
     // Execute the command.
@@ -3635,13 +3613,16 @@ nv_ident(cmdarg_T *cap)
 	if (!g_cmd && (has_mbyte
 		    ? vim_iswordp(mb_prevptr(ml_get_curline(), ptr))
 		    : vim_iswordc(ptr[-1])))
-	    STRCAT(buf, "\\>");
+	{
+	    STRCPY(buf + buflen, "\\>");
+	    buflen += STRLEN_LITERAL("\\>");
+	}
 
 	// put pattern in search history
 	init_history();
-	add_to_history(HIST_SEARCH, buf, TRUE, NUL);
+	add_to_history(HIST_SEARCH, buf, buflen, TRUE, NUL);
 
-	(void)normal_search(cap, cmdchar == '*' ? '/' : '?', buf, 0, NULL);
+	(void)normal_search(cap, cmdchar == '*' ? '/' : '?', buf, buflen, 0, NULL);
     }
     else
     {
@@ -4165,7 +4146,7 @@ nv_search(cmdarg_T *cap)
 	return;
     }
 
-    (void)normal_search(cap, cap->cmdchar, cap->searchbuf,
+    (void)normal_search(cap, cap->cmdchar, cap->searchbuf, STRLEN(cap->searchbuf),
 			(cap->arg || !EQUAL_POS(save_cursor, curwin->w_cursor))
 						      ? 0 : SEARCH_MARK, NULL);
 }
@@ -4180,7 +4161,7 @@ nv_next(cmdarg_T *cap)
 {
     pos_T   old = curwin->w_cursor;
     int	    wrapped = FALSE;
-    int	    i = normal_search(cap, 0, NULL, SEARCH_MARK | cap->arg, &wrapped);
+    int	    i = normal_search(cap, 0, NULL, 0, SEARCH_MARK | cap->arg, &wrapped);
 
     if (i == 1 && !wrapped && EQUAL_POS(old, curwin->w_cursor))
     {
@@ -4188,7 +4169,7 @@ nv_next(cmdarg_T *cap)
 	// happen when an offset is given and the cursor is on the last char
 	// in the buffer: Repeat with count + 1.
 	cap->count1 += 1;
-	(void)normal_search(cap, 0, NULL, SEARCH_MARK | cap->arg, NULL);
+	(void)normal_search(cap, 0, NULL, 0, SEARCH_MARK | cap->arg, NULL);
 	cap->count1 -= 1;
     }
 
@@ -4209,6 +4190,7 @@ normal_search(
     cmdarg_T	*cap,
     int		dir,
     char_u	*pat,
+    size_t	patlen,
     int		opt,		// extra flags for do_search()
     int		*wrapped)
 {
@@ -4224,7 +4206,7 @@ normal_search(
     curwin->w_set_curswant = TRUE;
 
     CLEAR_FIELD(sia);
-    i = do_search(cap->oap, dir, dir, pat, cap->count1,
+    i = do_search(cap->oap, dir, dir, pat, patlen, cap->count1,
 			    opt | SEARCH_OPT | SEARCH_ECHO | SEARCH_MSG, &sia);
     if (wrapped != NULL)
 	*wrapped = sia.sa_wrapped;
@@ -4249,6 +4231,7 @@ normal_search(
     // "/$" will put the cursor after the end of the line, may need to
     // correct that here
     check_cursor();
+
     return i;
 }
 
@@ -4577,13 +4560,15 @@ nv_brackets(cmdarg_T *cap)
 #endif
 
 #ifdef FEAT_SPELL
-    // "[s", "[S", "]s" and "]S": move to next spell error.
-    else if (cap->nchar == 's' || cap->nchar == 'S')
+    // "[r", "[s", "[S", "]r", "]s" and "]S": move to next spell error.
+    else if (cap->nchar == 'r' || cap->nchar == 's' || cap->nchar == 'S')
     {
 	setpcmark();
 	for (n = 0; n < cap->count1; ++n)
 	    if (spell_move_to(curwin, cap->cmdchar == ']' ? FORWARD : BACKWARD,
-			  cap->nchar == 's' ? TRUE : FALSE, FALSE, NULL) == 0)
+			  cap->nchar == 's' ? SMT_ALL :
+			  cap->nchar == 'r' ? SMT_RARE :
+			  SMT_BAD, FALSE, NULL) == 0)
 	    {
 		clearopbeep(cap->oap);
 		break;
@@ -5743,7 +5728,7 @@ nv_gv_cmd(cmdarg_T *cap)
  * "g0", "g^" : Like "0" and "^" but for screen lines.
  * "gm": middle of "g0" and "g$".
  */
-    static void
+    void
 nv_g_home_m_cmd(cmdarg_T *cap)
 {
     int		i;
@@ -5769,6 +5754,15 @@ nv_g_home_m_cmd(cmdarg_T *cap)
 	i = 0;
 	if (virtcol >= (colnr_T)width1 && width2 > 0)
 	    i = (virtcol - width1) / width2 * width2 + width1;
+
+	// When ending up below 'smoothscroll' marker, move just beyond it so
+	// that skipcol is not adjusted later.
+	if (curwin->w_skipcol > 0 && curwin->w_cursor.lnum == curwin->w_topline)
+	{
+	    int overlap = sms_marker_overlap(curwin, -1);
+	    if (overlap > 0 && i == curwin->w_skipcol)
+		i += overlap;
+	}
     }
     else
 	i = curwin->w_leftcol;
@@ -6064,7 +6058,7 @@ nv_g_cmd(cmdarg_T *cap)
 	{
 	    oap->motion_type = MCHAR;
 	    oap->inclusive = FALSE;
-	    i = linetabsize(curwin, curwin->w_cursor.lnum);
+	    i = linetabsize_no_outer(curwin, curwin->w_cursor.lnum);
 	    if (cap->count0 > 0 && cap->count0 <= 100)
 		coladvance((colnr_T)(i * cap->count0 / 100));
 	    else
@@ -6702,29 +6696,40 @@ adjust_for_sel(cmdarg_T *cap)
     int
 unadjust_for_sel(void)
 {
-    pos_T	*pp;
-
     if (*p_sel == 'e' && !EQUAL_POS(VIsual, curwin->w_cursor))
+	return unadjust_for_sel_inner(LT_POS(VIsual, curwin->w_cursor)
+					? &curwin->w_cursor : &VIsual);
+    return FALSE;
+}
+
+/*
+ * Move position "*pp" back one character for 'selection' == "exclusive".
+ * Returns TRUE when backed up to the previous line.
+ */
+    int
+unadjust_for_sel_inner(pos_T *pp)
+{
+    colnr_T	cs, ce;
+
+    if (pp->coladd > 0)
+	--pp->coladd;
+    else if (pp->col > 0)
     {
-	if (LT_POS(VIsual, curwin->w_cursor))
-	    pp = &curwin->w_cursor;
-	else
-	    pp = &VIsual;
-	if (pp->coladd > 0)
-	    --pp->coladd;
-	else
-	if (pp->col > 0)
+	--pp->col;
+	mb_adjustpos(curbuf, pp);
+	if (virtual_active())
 	{
-	    --pp->col;
-	    mb_adjustpos(curbuf, pp);
-	}
-	else if (pp->lnum > 1)
-	{
-	    --pp->lnum;
-	    pp->col = ml_get_len(pp->lnum);
-	    return TRUE;
+	    getvcol(curwin, pp, &cs, NULL, &ce);
+	    pp->coladd = ce - cs;
 	}
     }
+    else if (pp->lnum > 1)
+    {
+	--pp->lnum;
+	pp->col = ml_get_len(pp->lnum);
+	return TRUE;
+    }
+
     return FALSE;
 }
 
@@ -7261,12 +7266,9 @@ nv_at(cmdarg_T *cap)
     static void
 nv_halfpage(cmdarg_T *cap)
 {
-    if ((cap->cmdchar == Ctrl_U && curwin->w_cursor.lnum == 1)
-	    || (cap->cmdchar == Ctrl_D
-		&& curwin->w_cursor.lnum == curbuf->b_ml.ml_line_count))
-	clearopbeep(cap->oap);
-    else if (!checkclearop(cap->oap))
-	halfpage(cap->cmdchar == Ctrl_D, cap->count0);
+    int	dir = cap->cmdchar == Ctrl_D ? FORWARD : BACKWARD;
+    if (!checkclearop(cap->oap))
+	pagescroll(dir, cap->count0, TRUE);
 }
 
 /*

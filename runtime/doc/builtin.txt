@@ -1,4 +1,4 @@
-*builtin.txt*	For Vim version 9.1.  Last change: 2024 Mar 14
+*builtin.txt*	For Vim version 9.1.  Last change: 2024 May 25
 
 
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
@@ -220,12 +220,12 @@ getbufvar({buf}, {varname} [, {def}])
 				any	variable {varname} in buffer {buf}
 getcellwidths()			List	get character cell width overrides
 getchangelist([{buf}])		List	list of change list items
-getchar([expr])			Number or String
+getchar([{expr}])		Number or String
 					get one character from the user
 getcharmod()			Number	modifiers for the last typed character
 getcharpos({expr})		List	position of cursor, mark, etc.
 getcharsearch()			Dict	last character search
-getcharstr([expr])		String	get one character from the user
+getcharstr([{expr}])		String	get one character from the user
 getcmdcompltype()		String	return the type of the current
 					command-line completion
 getcmdline()			String	return the current command-line
@@ -265,6 +265,8 @@ getreg([{regname} [, 1 [, {list}]]])
 getreginfo([{regname}])		Dict	information about a register
 getregion({pos1}, {pos2} [, {opts}])
 				List	get the text from {pos1} to {pos2}
+getregionpos({pos1}, {pos2} [, {opts}])
+				List	get a list of positions for a region
 getregtype([{regname}])		String	type of a register
 getscriptinfo([{opts}])		List	list of sourced scripts
 gettabinfo([{expr}])		List	list of tab pages
@@ -398,7 +400,7 @@ menu_info({name} [, {mode}])	Dict	get menu item information
 min({expr})			Number	minimum value of items in {expr}
 mkdir({name} [, {flags} [, {prot}]])
 				Number	create directory {name}
-mode([expr])			String	current editing mode
+mode([{expr}])			String	current editing mode
 mzeval({expr})			any	evaluate |MzScheme| expression
 nextnonblank({lnum})		Number	line nr of non-blank line >= {lnum}
 nr2char({expr} [, {utf8}])	String	single char with ASCII/UTF-8 value {expr}
@@ -699,7 +701,7 @@ test_override({expr}, {val})	none	test with Vim internal overrides
 test_refcount({expr})		Number	get the reference count of {expr}
 test_setmouse({row}, {col})	none	set the mouse position for testing
 test_settime({expr})		none	set current time for testing
-test_srand_seed([seed])		none	set seed for testing srand()
+test_srand_seed([{seed}])	none	set seed for testing srand()
 test_unknown()			any	unknown value for testing
 test_void()			any	void value for testing
 timer_info([{id}])		List	information about timers
@@ -729,7 +731,7 @@ virtcol({expr} [, {list} [, {winid}])
 					screen column of cursor or mark
 virtcol2col({winid}, {lnum}, {col})
 				Number  byte index of a character on screen
-visualmode([expr])		String	last visual mode used
+visualmode([{expr}])		String	last visual mode used
 wildmenumode()			Number	whether 'wildmenu' mode is active
 win_execute({id}, {command} [, {silent}])
 				String	execute {command} in window {id}
@@ -1771,7 +1773,7 @@ confirm({msg} [, {choices} [, {default} [, {type}]]])
 		made.  It returns the number of the choice.  For the first
 		choice this is 1.
 		Note: confirm() is only supported when compiled with dialog
-		support, see |+dialog_con| and |+dialog_gui|.
+		support, see |+dialog_con| |+dialog_con_gui| and |+dialog_gui|.
 
 		{msg} is displayed in a |dialog| with {choices} as the
 		alternatives.  When {choices} is missing or empty, "&OK" is
@@ -2265,8 +2267,8 @@ empty({expr})						*empty()*
 		- A |Job| is empty when it failed to start.
 		- A |Channel| is empty when it is closed.
 		- A |Blob| is empty when its length is zero.
-		- An |Object| is empty, when the |empty()| builtin method in
-		  the object (if present) returns true.
+		- An |Object| is empty, when the empty() method in the object
+		  (if present) returns true. |object-empty()|
 
 		For a long |List| this is much faster than comparing the
 		length with zero.
@@ -2307,7 +2309,8 @@ eval({string})	Evaluate {string} and return the result.  Especially useful to
 		turn the result of |string()| back into the original value.
 		This works for Numbers, Floats, Strings, Blobs and composites
 		of them.  Also works for |Funcref|s that refer to existing
-		functions.
+		functions.  In |Vim9| script, it can be used to obtain |enum|
+		values from their fully qualified names.
 
 		Can also be used as a |method|: >
 			argv->join()->eval()
@@ -2543,7 +2546,7 @@ expand({string} [, {nosuf} [, {list}]])				*expand()*
 		not start with '%', '#' or '<', see below.
 
 		For a |:terminal| window '%' expands to a '!' followed by
-		the command or shell that is run |terminal-bufname|
+		the command or shell that is run.  |terminal-bufname|
 
 		When {string} starts with '%', '#' or '<', the expansion is
 		done like for the |cmdline-special| variables with their
@@ -3454,16 +3457,16 @@ getchangelist([{buf}])					*getchangelist()*
 		Can also be used as a |method|: >
 			GetBufnr()->getchangelist()
 
-getchar([expr])						*getchar()*
+getchar([{expr}])					*getchar()*
 		Get a single character from the user or input stream.
-		If [expr] is omitted, wait until a character is available.
-		If [expr] is 0, only get a character when one is available.
+		If {expr} is omitted, wait until a character is available.
+		If {expr} is 0, only get a character when one is available.
 			Return zero otherwise.
-		If [expr] is 1, only check if a character is available, it is
+		If {expr} is 1, only check if a character is available, it is
 			not consumed.  Return zero if no character available.
 		If you prefer always getting a string use |getcharstr()|.
 
-		Without [expr] and when [expr] is 0 a whole character or
+		Without {expr} and when {expr} is 0 a whole character or
 		special key is returned.  If it is a single character, the
 		result is a Number.  Use |nr2char()| to convert it to a String.
 		Otherwise a String is returned with the encoded character.
@@ -3473,11 +3476,11 @@ getchar([expr])						*getchar()*
 		also a String when a modifier (shift, control, alt) was used
 		that is not included in the character.
 
-		When [expr] is 0 and Esc is typed, there will be a short delay
+		When {expr} is 0 and Esc is typed, there will be a short delay
 		while Vim waits to see if this is the start of an escape
 		sequence.
 
-		When [expr] is 1 only the first byte is returned.  For a
+		When {expr} is 1 only the first byte is returned.  For a
 		one-byte character it is the character itself as a number.
 		Use nr2char() to convert it to a String.
 
@@ -3588,13 +3591,13 @@ getcharsearch()						*getcharsearch()*
 <		Also see |setcharsearch()|.
 
 
-getcharstr([expr])					*getcharstr()*
+getcharstr([{expr}])					*getcharstr()*
 		Get a single character from the user or input stream as a
 		string.
-		If [expr] is omitted, wait until a character is available.
-		If [expr] is 0 or false, only get a character when one is
+		If {expr} is omitted, wait until a character is available.
+		If {expr} is 0 or false, only get a character when one is
 			available.  Return an empty string otherwise.
-		If [expr] is 1 or true, only check if a character is
+		If {expr} is 1 or true, only check if a character is
 			available, it is not consumed.  Return an empty string
 			if no character is available.
 		Otherwise this works like |getchar()|, except that a number
@@ -4285,14 +4288,14 @@ getregion({pos1}, {pos2} [, {opts}])			*getregion()*
 		The optional argument {opts} is a Dict and supports the
 		following items:
 
-			type		Specify the region's selection type
-					(default: "v"):
-			    "v"		for |characterwise| mode
-			    "V"		for |linewise| mode
-			    "<CTRL-V>"	for |blockwise-visual| mode
+			type		Specify the region's selection type.
+					See |getregtype()| for possible values,
+					except that the width can be omitted
+					and an empty string cannot be used.
+					(default: "v")
 
 			exclusive	If |TRUE|, use exclusive selection
-					for the end position
+					for the end position.
 					(default: follow 'selection')
 
 		You can get the last selection type by |visualmode()|.
@@ -4325,6 +4328,41 @@ getregion({pos1}, {pos2} [, {opts}])			*getregion()*
 <
 		Can also be used as a |method|: >
 			getpos('.')->getregion(getpos("'a"))
+<
+getregionpos({pos1}, {pos2} [, {opts}])            *getregionpos()*
+		Same as |getregion()|, but returns a list of positions
+		describing the buffer text segments bound by {pos1} and
+		{pos2}.
+		The segments are a pair of positions for every line: >
+			[[{start_pos}, {end_pos}], ...]
+<
+		The position is a |List| with four numbers:
+		    [bufnum, lnum, col, off]
+		"bufnum" is the buffer number.
+		"lnum" and "col" are the position in the buffer.  The first
+		column is 1.
+		If the "off" number of a starting position is non-zero, it is
+		the offset in screen columns from the start of the character.
+		E.g., a position within a <Tab> or after the last character.
+		If the "off" number of an ending position is non-zero, it is
+		the offset of the character's first cell not included in the
+		selection, otherwise all its cells are included.
+
+		Apart from the options supported by |getregion()|, {opts} also
+		supports the following:
+
+			eol		If |TRUE|, indicate positions beyond
+					the end of a line with "col" values
+					one more than the length of the line.
+					If |FALSE|, positions are limited
+					within their lines, and if a line is
+					empty or the selection is entirely
+					beyond the end of a line, a "col"
+					value of 0 is used for both positions.
+					(default: |FALSE|)
+
+		Can also be used as a |method|: >
+			getpos('.')->getregionpos(getpos("'a"))
 <
 getregtype([{regname}])					*getregtype()*
 		The result is a String, which is type of register {regname}.
@@ -4381,7 +4419,7 @@ getscriptinfo([{opts}])					*getscriptinfo()*
 
 		Examples: >
 			:echo getscriptinfo({'name': 'myscript'})
-			:echo getscriptinfo({'sid': 15}).variables
+			:echo getscriptinfo({'sid': 15})[0].variables
 <
 gettabinfo([{tabnr}])					*gettabinfo()*
 		If {tabnr} is not specified, then information about all the
@@ -5485,9 +5523,9 @@ len({expr})	The result is a Number, which is the length of the argument.
 		When {expr} is a |Blob| the number of bytes is returned.
 		When {expr} is a |Dictionary| the number of entries in the
 		|Dictionary| is returned.
-		When {expr} is an |Object|, invokes the |len()| method in the
-		object (if present) to get the length.  Otherwise returns
-		zero.
+		When {expr} is an |Object|, invokes the len() method in the
+		object (if present) to get the length (|object-len()|).
+		Otherwise returns zero.
 
 		Can also be used as a |method|: >
 			mylist->len()
@@ -6647,8 +6685,8 @@ mkdir({name} [, {flags} [, {prot}]])
 			GetName()->mkdir()
 <
 							*mode()*
-mode([expr])	Return a string that indicates the current mode.
-		If [expr] is supplied and it evaluates to a non-zero Number or
+mode([{expr}])	Return a string that indicates the current mode.
+		If {expr} is supplied and it evaluates to a non-zero Number or
 		a non-empty String (|non-zero-arg|), then the full mode is
 		returned, otherwise only the first letter is returned.
 		Also see |state()|.
@@ -8968,11 +9006,12 @@ shellescape({string} [, {special}])			*shellescape()*
 		Otherwise it will enclose {string} in single quotes and
 		replace all "'" with "'\''".
 
-		When the {special} argument is present and it's a non-zero
-		Number or a non-empty String (|non-zero-arg|), then special
-		items such as "!", "%", "#" and "<cword>" will be preceded by
-		a backslash.  This backslash will be removed again by the |:!|
-		command.
+		The {special} argument adds additional escaping of keywords
+		used in Vim commands. When it is not omitted and a non-zero
+		number or a non-empty String (|non-zero-arg|), then special
+		items such as "!", "%", "#" and "<cword>" (as listed in
+		|expand()|) will be preceded by a backslash.
+		This backslash will be removed again by the |:!| command.
 
 		The "!" character will be escaped (again with a |non-zero-arg|
 		{special}) when 'shell' contains "csh" in the tail.  That is
@@ -9068,7 +9107,8 @@ slice({expr}, {start} [, {end}])			*slice()*
 		Similar to using a |slice| "expr[start : end]", but "end" is
 		used exclusive.  And for a string the indexes are used as
 		character indexes instead of byte indexes, like in
-		|vim9script|.  Also, composing characters are not counted.
+		|vim9script|.  Also, composing characters are treated as a
+		part of the preceding base character.
 		When {end} is omitted the slice continues to the last item.
 		When {end} is -1 the last item is omitted.
 		Returns an empty value if {start} or {end} are invalid.
@@ -9465,8 +9505,8 @@ strcharpart({src}, {start} [, {len} [, {skipcc}]])		*strcharpart()*
 		of byte index and length.
 		When {skipcc} is omitted or zero, composing characters are
 		counted separately.
-		When {skipcc} set to 1, Composing characters are ignored,
-		similar to  |slice()|.
+		When {skipcc} set to 1, composing characters are treated as a
+		part of the preceding base character, similar to |slice()|.
 		When a character index is used where a character does not
 		exist it is omitted and counted as one character.  For
 		example: >
@@ -9484,7 +9524,7 @@ strchars({string} [, {skipcc}])					*strchars()*
 		in String {string}.
 		When {skipcc} is omitted or zero, composing characters are
 		counted separately.
-		When {skipcc} set to 1, Composing characters are ignored.
+		When {skipcc} set to 1, composing characters are ignored.
 		|strcharlen()| always does this.
 
 		Returns zero on error.
@@ -9597,14 +9637,16 @@ string({expr})	Return {expr} converted to a String.  If {expr} is a Number,
 			Dictionary	{key: value, key: value}
 			Class		class SomeName
 			Object		object of SomeName {lnum: 1, col: 3}
+			Enum		enum EnumName
+			EnumValue	enum name.value {name: str, ordinal: nr}
 
 		When a |List| or |Dictionary| has a recursive reference it is
 		replaced by "[...]" or "{...}".  Using eval() on the result
 		will then fail.
 
-		For an object, invokes the |string()| method to get a textual
+		For an object, invokes the string() method to get a textual
 		representation of the object.  If the method is not present,
-		then the default representation is used.
+		then the default representation is used. |object-string()|
 
 		Can also be used as a |method|: >
 			mylist->string()
@@ -9976,6 +10018,10 @@ synconcealed({lnum}, {col})				*synconcealed()*
 			synconcealed(lnum, 5)   [1, 'X', 2]
 			synconcealed(lnum, 6)   [0, '', 0]
 
+		Note: Doesn't consider |matchadd()| highlighting items,
+		since syntax and matching highlighting are two different
+		mechanisms |syntax-vs-match|.
+
 
 synstack({lnum}, {col})					*synstack()*
 		Return a |List|, which is the stack of syntax items at the
@@ -10212,7 +10258,9 @@ tempname()					*tempname()* *temp-file-name*
 		is different for at least 26 consecutive calls.  Example: >
 			:let tmpfile = tempname()
 			:exe "redir > " .. tmpfile
-<		For Unix, the file will be in a private directory |tempfile|.
+<		For Unix, the file will be in a private directory |tempfile|
+		that is recursively deleted when Vim exits, on other systems
+		temporary files are not cleaned up automatically on exit.
 		For MS-Windows forward slashes are used when the 'shellslash'
 		option is set, or when 'shellcmdflag' starts with '-' and
 		'shell' does not contain powershell or pwsh.
@@ -10460,6 +10508,8 @@ type({expr})	The result is a Number representing the type of {expr}.
 			Class:	   12  |v:t_class|
 			Object:	   13  |v:t_object|
 			Typealias: 14  |v:t_typealias|
+			Enum:	   15  |v:t_enum|
+			EnumValue: 16  |v:t_enumvalue|
 		For backward compatibility, this method can be used: >
 			:if type(myvar) == type(0)
 			:if type(myvar) == type("")
@@ -11194,6 +11244,7 @@ cscope			Compiled with |cscope| support.
 cursorbind		Compiled with |'cursorbind'| (always true)
 debug			Compiled with "DEBUG" defined.
 dialog_con		Compiled with console dialog support.
+dialog_con_gui		Compiled with console and GUI dialog support.
 dialog_gui		Compiled with GUI dialog support.
 diff			Compiled with |vimdiff| and 'diff' support.
 digraphs		Compiled with support for digraphs.
