@@ -358,7 +358,9 @@ static PyObject *py_find_spec;
 #else
 static PyObject *py_load_module;
 #endif
+#if PY_VERSION_HEX < 0x30c00a7
 static PyObject *py_find_module;
+#endif
 
 static PyObject *VimError;
 
@@ -633,13 +635,14 @@ PythonIO_Flush(void)
     if (old_fn != NULL && io_ga.ga_len > 0)
     {
 	((char *)io_ga.ga_data)[io_ga.ga_len] = NUL;
+	// We don't know what emsg_severe should be here, so ... hope?
 	old_fn((char *)io_ga.ga_data);
     }
     io_ga.ga_len = 0;
 }
 
     static void
-writer(writefn fn, char_u *str, PyInt n)
+writer(writefn fn, char_u *str, PyInt n, int severe)
 {
     char_u *ptr;
 
@@ -663,6 +666,7 @@ writer(writefn fn, char_u *str, PyInt n)
 
 	mch_memmove(((char *)io_ga.ga_data) + io_ga.ga_len, str, (size_t)len);
 	((char *)io_ga.ga_data)[io_ga.ga_len + len] = NUL;
+	emsg_severe = severe;
 	fn((char *)io_ga.ga_data);
 	str = ptr + 1;
 	n -= len + 1;
@@ -690,9 +694,7 @@ write_output(OutputObject *self, PyObject *string)
 
     Py_BEGIN_ALLOW_THREADS
     Python_Lock_Vim();
-    if (error)
-	emsg_severe = TRUE;
-    writer((writefn)(error ? emsg : msg), (char_u *)str, len);
+    writer((writefn)(error ? emsg : msg), (char_u *)str, len, error);
     Python_Release_Vim();
     Py_END_ALLOW_THREADS
     PyMem_Free(str);
@@ -3081,7 +3083,7 @@ ListConcatInPlace(ListObject *self, PyObject *obj)
     }
     Py_DECREF(lookup_dict);
 
-    Py_INCREF(self);
+    Py_INCREF((PyObject *)self);
     return (PyObject *)(self);
 }
 
@@ -4010,7 +4012,7 @@ TabPageNew(tabpage_T *tab)
     if (TAB_PYTHON_REF(tab))
     {
 	self = TAB_PYTHON_REF(tab);
-	Py_INCREF(self);
+	Py_INCREF((PyObject *)self);
     }
     else
     {
@@ -4204,7 +4206,7 @@ WindowNew(win_T *win, tabpage_T *tab)
     if (WIN_PYTHON_REF(win))
     {
 	self = WIN_PYTHON_REF(win);
-	Py_INCREF(self);
+	Py_INCREF((PyObject *)self);
     }
     else
     {
@@ -4332,7 +4334,7 @@ WindowAttr(WindowObject *self, char *name)
     }
     else if (strcmp(name, "tabpage") == 0)
     {
-	Py_INCREF(self->tabObject);
+	Py_INCREF((PyObject *)self->tabObject);
 	return (PyObject *)(self->tabObject);
     }
     else if (strcmp(name, "__members__") == 0)
@@ -4486,7 +4488,7 @@ WinListNew(TabPageObject *tabObject)
 
     self = PyObject_NEW(WinListObject, WinListTypePtr);
     self->tabObject = tabObject;
-    Py_INCREF(tabObject);
+    Py_INCREF((PyObject *)tabObject);
 
     return (PyObject *)(self);
 }
@@ -5381,7 +5383,7 @@ RangeNew(buf_T *buf, PyInt start, PyInt end)
 	Py_DECREF(self);
 	return NULL;
     }
-    Py_INCREF(bufr);
+    Py_INCREF((PyObject *)bufr);
 
     self->buf = bufr;
     self->start = start;
@@ -5510,7 +5512,7 @@ BufferNew(buf_T *buf)
     if (BUF_PYTHON_REF(buf) != NULL)
     {
 	self = BUF_PYTHON_REF(buf);
-	Py_INCREF(self);
+	Py_INCREF((PyObject *)self);
     }
     else
     {

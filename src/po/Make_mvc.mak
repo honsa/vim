@@ -40,7 +40,9 @@ VIMRUNTIME = ..\..\runtime
 PACKAGE = vim
 # Correct the following line for the where executeable file vim is
 # installed.  Please do not put the path in quotes.
-VIM = ..\vim.exe
+!IFNDEF VIMPROG
+VIMPROG = ..\vim.exe
+!ENDIF
 
 # Correct the following line for the directory where gettext et al is
 # installed.  Please do not put the path in quotes.
@@ -102,7 +104,7 @@ originals : $(MOFILES)
 converted: $(MOCONVERTED)
 
 .po.ck:
-	"$(VIM)" -u NONE --noplugins -e -s -X --cmd "set enc=utf-8" -S check.vim \
+	"$(VIMPROG)" -u NONE --noplugins -e -s -X --cmd "set enc=utf-8" -S check.vim \
 		-c "if error == 0 | q | else | num 2 | cq | endif" $<
 	$(TOUCH_TARGET)
 
@@ -122,9 +124,7 @@ nb.po: no.po
 ja.sjis.po: ja.po
 	@$(MAKE) -nologo -f Make_mvc.mak sjiscorr
 	-$(RM) $@
-!IF EXIST ("$(GETTEXT_PATH)\msgconv.exe")
-	"$(GETTEXT_PATH)\msgconv.exe" -t CP932 $? | .\sjiscorr.exe > $@
-!ELSEIF DEFINED (ICONV)
+!IF DEFINED (ICONV)
 	$(ICONV) -f UTF-8 -t CP932 $? | .\sjiscorr.exe > $@
 !ELSE
 	$(PS) $(PSFLAGS) [System.IO.File]::WriteAllText(\"$@\", \
@@ -146,23 +146,19 @@ sjiscorr: sjiscorr.c
 # Convert ja.po to create ja.euc-jp.po.
 ja.euc-jp.po: ja.po
 	-$(RM) $@
-!IF EXIST ("$(GETTEXT_PATH)\msgconv.exe")
-	"$(GETTEXT_PATH)\msgconv.exe" -t EUC-JP -o $@ $?
-!ELSE
-! IF DEFINED (ICONV)
+!IF DEFINED (ICONV)
 	$(ICONV) -f UTF-8 -t EUC-JP $? > $@
-! ELSE
+!ELSE
 	$(PS) $(PSFLAGS) [System.IO.File]::WriteAllText(\"$@\", \
 		[System.IO.File]::ReadAllText(\"$?\", \
 		[System.Text.Encoding]::GetEncoding(65001)), \
 		[System.Text.Encoding]::GetEncoding(20932))
-! ENDIF
+!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(20932)) -replace \
 		'charset=utf-8', 'charset=EUC-JP'; \
 		[System.IO.File]::WriteAllText(\"$@\", $$out, \
 		[System.Text.Encoding]::GetEncoding(20932))
-!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(20932)) -replace \
 		'# Original translations', \
@@ -173,23 +169,19 @@ ja.euc-jp.po: ja.po
 # Convert cs.po to create cs.cp1250.po.
 cs.cp1250.po: cs.po
 	-$(RM) $@
-!IF EXIST ("$(GETTEXT_PATH)\msgconv.exe")
-	"$(GETTEXT_PATH)\msgconv.exe" -t CP1250 -o $@ $?
-!ELSE
-! IF DEFINED (ICONV)
+!IF DEFINED (ICONV)
 	$(ICONV) -f ISO-8859-2 -t CP1250 $? > $@
-! ELSE
+!ELSE
 	$(PS) $(PSFLAGS) [System.IO.File]::WriteAllText(\"$@\", \
 		[System.IO.File]::ReadAllText(\"$?\", \
 		[System.Text.Encoding]::GetEncoding(28592)), \
 		[System.Text.Encoding]::GetEncoding(1250))
-! ENDIF
+!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(1250)) -replace \
 		'charset=iso-8859-2', 'charset=CP1250'; \
 		[System.IO.File]::WriteAllText(\"$@\", $$out, \
 		[System.Text.Encoding]::GetEncoding(1250))
-!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(1250)) -replace \
 		'# Original translations', \
@@ -200,23 +192,19 @@ cs.cp1250.po: cs.po
 # Convert pl.po to create pl.cp1250.po.
 pl.cp1250.po: pl.po
 	-$(RM) $@
-!IF EXIST ("$(GETTEXT_PATH)\msgconv.exe")
-	"$(GETTEXT_PATH)\msgconv.exe" -t CP1250 -o $@ $?
-!ELSE
-! IF DEFINED (ICONV)
+!IF DEFINED (ICONV)
 	$(ICONV) -f ISO-8859-2 -t CP1250 $? > $@
-! ELSE
+!ELSE
 	$(PS) $(PSFLAGS) [System.IO.File]::WriteAllText(\"$@\", \
 		[System.IO.File]::ReadAllText(\"$?\", \
 		[System.Text.Encoding]::GetEncoding(28592)), \
 		[System.Text.Encoding]::GetEncoding(1250))
-! ENDIF
+!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(1250)) -replace \
 		'charset=iso-8859-2', 'charset=CP1250'; \
 		[System.IO.File]::WriteAllText(\"$@\", $$out, \
 		[System.Text.Encoding]::GetEncoding(1250))
-!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(1250)) -replace \
 		'# Original translations', \
@@ -227,20 +215,16 @@ pl.cp1250.po: pl.po
 # Convert pl.po to create pl.UTF-8.po.
 pl.UTF-8.po: pl.po
 	-$(RM) $@
-!IF EXIST ("$(GETTEXT_PATH)\msgconv.exe")
-	"$(GETTEXT_PATH)\msgconv.exe" -t UTF-8 -o $@ $?
-!ELSE
-! IF DEFINED (ICONV)
+!IF DEFINED (ICONV)
 	$(ICONV) -f ISO-8859-2 -t UTF-8 $? > $@
-! ELSE
+!ELSE
 	$(PS) $(PSFLAGS) [System.IO.File]::WriteAllText(\"$@\", \
 		[System.IO.File]::ReadAllText(\"$?\", \
 		[System.Text.Encoding]::GetEncoding(28592)))
-! ENDIF
+!ENDIF
 	$(PS) $(PSFLAGS) (Get-Content -Raw -Encoding UTF8 $@ \
 		^| % {$$_-replace 'charset=iso-8859-2', 'charset=UTF-8'}) \
 		^| 1>nul New-Item -Force -Path . -ItemType file -Name $@
-!ENDIF
 	$(PS) $(PSFLAGS) (Get-Content -Raw -Encoding UTF8 $@ \
 		^| % {$$_-replace '# Original translations', \
 		'# Generated from $?, DO NOT EDIT'}) \
@@ -249,23 +233,19 @@ pl.UTF-8.po: pl.po
 # Convert sk.po to create sk.cp1250.po.
 sk.cp1250.po: sk.po
 	-$(RM) $@
-!IF EXIST ("$(GETTEXT_PATH)\msgconv.exe")
-	"$(GETTEXT_PATH)\msgconv.exe" -t CP1250 -o $@ $?
-!ELSE
-! IF DEFINED (ICONV)
+!IF DEFINED (ICONV)
 	$(ICONV) -f ISO-8859-2 -t CP1250 $? > $@
-! ELSE
+!ELSE
 	$(PS) $(PSFLAGS) [System.IO.File]::WriteAllText(\"$@\", \
 		[System.IO.File]::ReadAllText(\"$?\", \
 		[System.Text.Encoding]::GetEncoding(28592)), \
 		[System.Text.Encoding]::GetEncoding(1250))
-! ENDIF
+!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(1250)) -replace \
 		'charset=iso-8859-2', 'charset=CP1250'; \
 		[System.IO.File]::WriteAllText(\"$@\", $$out, \
 		[System.Text.Encoding]::GetEncoding(1250))
-!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(1250)) -replace \
 		'# Original translations', \
@@ -276,24 +256,20 @@ sk.cp1250.po: sk.po
 # Convert zh_CN.UTF-8.po to create zh_CN.po.
 zh_CN.po: zh_CN.UTF-8.po
 	-$(RM) $@
-!IF EXIST ("$(GETTEXT_PATH)\msgconv.exe")
-	"$(GETTEXT_PATH)\msgconv.exe" -t GB2312 -o $@ $?
-!ELSE
-! IF DEFINED (ICONV)
+!IF DEFINED (ICONV)
 	$(ICONV) -f UTF-8 -t GB2312 $? > $@
-! ELSE
+!ELSE
 	$(PS) $(PSFLAGS) [System.IO.File]::WriteAllText(\"$@\", \
 		[System.IO.File]::ReadAllText(\"$?\", \
 		[System.Text.Encoding]::GetEncoding(65001)), \
 		[System.Text.Encoding]::GetEncoding(936))
 
-! ENDIF
+!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(936)) -replace \
 		'charset=UTF-8', 'charset=GB2312'; \
 		[System.IO.File]::WriteAllText(\"$@\", $$out, \
 		[System.Text.Encoding]::GetEncoding(936))
-!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(936)) -replace \
 		'# Original translations', \
@@ -326,24 +302,19 @@ zh_CN.cp936.po: zh_CN.UTF-8.po
 # Convert zh_TW.UTF-8.po to create zh_TW.po.
 zh_TW.po: zh_TW.UTF-8.po
 	-$(RM) $@
-!IF EXIST ("$(GETTEXT_PATH)\msgconv.exe")
-	"$(GETTEXT_PATH)\msgconv.exe" -t BIG5 -o $@ $?
-!ELSE
-! IF DEFINED (ICONV)
+!IF DEFINED (ICONV)
 	$(ICONV) -f UTF-8 -t BIG5 $? > $@
-! ELSE
+!ELSE
 	$(PS) $(PSFLAGS) [System.IO.File]::WriteAllText(\"$@\", \
 		[System.IO.File]::ReadAllText(\"$?\", \
 		[System.Text.Encoding]::GetEncoding(65001)), \
 		[System.Text.Encoding]::GetEncoding(950))
-
-! ENDIF
+!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(950)) -replace \
 		'charset=UTF-8', 'charset=BIG5'; \
 		[System.IO.File]::WriteAllText(\"$@\", $$out, \
 		[System.Text.Encoding]::GetEncoding(950))
-!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(950)) -replace \
 		'# Original translations', \
@@ -371,9 +342,7 @@ zh_TW.po: zh_TW.UTF-8.po
 #zh_TW.po: zh_TW.UTF-8.po
 #	@$(MAKE) -nologo -f Make_mvc.mak big5corr
 #	-$(RM) $@
-#!IF EXIST ("$(GETTEXT_PATH)\msgconv.exe")
-#	"$(GETTEXT_PATH)\msgconv.exe" -t BIG5 $? | .\big5corr.exe > $@
-#!ELSEIF DEFINED (ICONV)
+#!IF DEFINED (ICONV)
 #	$(ICONV) -f UTF-8 -t BIG5 $? | .\big5corr.exe > $@
 #!ELSE
 #	$(PS) $(PSFLAGS) [System.IO.File]::WriteAllText(\"$@\", \
@@ -396,24 +365,20 @@ zh_TW.po: zh_TW.UTF-8.po
 # Convert ko.UTF-8.po to create ko.po.
 ko.po: ko.UTF-8.po
 	-$(RM) $@
-!IF EXIST ("$(GETTEXT_PATH)\msgconv.exe")
-	"$(GETTEXT_PATH)\msgconv.exe" -t EUC-KR -o $@ $?
-!ELSE
-! IF DEFINED (ICONV)
+!IF DEFINED (ICONV)
 	$(ICONV) -f UTF-8 -t EUC-KR $? > $@
-! ELSE
+!ELSE
 	$(PS) $(PSFLAGS) [System.IO.File]::WriteAllText(\"$@\", \
 		[System.IO.File]::ReadAllText(\"$?\", \
 		[System.Text.Encoding]::GetEncoding(65001)), \
 		[System.Text.Encoding]::GetEncoding(51949))
 
-! ENDIF
+!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(51949)) -replace \
 		'charset=UTF-8', 'charset=EUC-KR'; \
 		[System.IO.File]::WriteAllText(\"$@\", $$out, \
 		[System.Text.Encoding]::GetEncoding(51949))
-!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(51949)) -replace \
 		'# Original translations', \
@@ -424,24 +389,19 @@ ko.po: ko.UTF-8.po
 # Convert ru.po to create ru.cp1251.po.
 ru.cp1251.po: ru.po
 	-$(RM) $@
-!IF EXIST ("$(GETTEXT_PATH)\msgconv.exe")
-	"$(GETTEXT_PATH)\msgconv.exe" -t CP1251 -o $@ $?
-!ELSE
-! IF DEFINED (ICONV)
+!IF DEFINED (ICONV)
 	$(ICONV) -f UTF-8 -t CP1251 $? > $@
-! ELSE
+!ELSE
 	$(PS) $(PSFLAGS) [System.IO.File]::WriteAllText(\"$@\", \
 		[System.IO.File]::ReadAllText(\"$?\", \
 		[System.Text.Encoding]::GetEncoding(65001)), \
 		[System.Text.Encoding]::GetEncoding(1251))
-
-! ENDIF
+!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(1251)) -replace \
 		'charset=UTF-8', 'charset=CP1251'; \
 		[System.IO.File]::WriteAllText(\"$@\", $$out, \
 		[System.Text.Encoding]::GetEncoding(1251))
-!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(1251)) -replace \
 		'# Original translations', \
@@ -452,24 +412,19 @@ ru.cp1251.po: ru.po
 # Convert uk.po to create uk.cp1251.po.
 uk.cp1251.po: uk.po
 	-$(RM) $@
-!IF EXIST ("$(GETTEXT_PATH)\msgconv.exe")
-	"$(GETTEXT_PATH)\msgconv.exe" -t CP1251 -o $@ $?
-!ELSE
-! IF DEFINED (ICONV)
+!IF DEFINED (ICONV)
 	$(ICONV) -f UTF-8 -t CP1251 $? > $@
-! ELSE
+!ELSE
 	$(PS) $(PSFLAGS) [System.IO.File]::WriteAllText(\"$@\", \
 		[System.IO.File]::ReadAllText(\"$?\", \
 		[System.Text.Encoding]::GetEncoding(65001)), \
 		[System.Text.Encoding]::GetEncoding(1251))
-
-! ENDIF
+!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(1251)) -replace \
 		'charset=UTF-8', 'charset=CP1251'; \
 		[System.IO.File]::WriteAllText(\"$@\", $$out, \
 		[System.Text.Encoding]::GetEncoding(1251))
-!ENDIF
 	$(PS) $(PSFLAGS) $$out = [System.IO.File]::ReadAllText(\"$@\", \
 		[System.Text.Encoding]::GetEncoding(1251)) -replace \
 		'# Original translations', \
@@ -496,27 +451,28 @@ files: $(PO_INPUTLIST)
 	$(LS) $(LSFLAGS) $(PO_INPUTLIST) > .\files
 
 first_time: files
-	"$(VIM)" -u NONE --not-a-term -S tojavascript.vim $(LANGUAGE).po \
+	"$(VIMPROG)" -u NONE --not-a-term -S tojavascript.vim $(LANGUAGE).po \
 		$(PO_VIM_INPUTLIST)
+	@ copy /b .\files+.\vim_to_js .\allfiles
 	set OLD_PO_FILE_INPUT=yes
 	set OLD_PO_FILE_OUTPUT=yes
 	$(XGETTEXT) --default-domain=$(LANGUAGE) --add-comments $(XGETTEXT_KEYWORDS) \
-		--files-from=.\files $(PO_VIM_JSLIST)
-	"$(VIM)" -u NONE --not-a-term -S fixfilenames.vim $(LANGUAGE).po \
+		--files-from=.\allfiles
+	"$(VIMPROG)" -u NONE --not-a-term -S fixfilenames.vim $(LANGUAGE).po \
 		$(PO_VIM_INPUTLIST)
-	$(RM) *.js
+	$(RM) *.js .\vim_to_js
 
 $(PACKAGE).pot: files
-	"$(VIM)" -u NONE --not-a-term -S tojavascript.vim $(PACKAGE).pot \
+	"$(VIMPROG)" -u NONE --not-a-term -S tojavascript.vim $(PACKAGE).pot \
 		$(PO_VIM_INPUTLIST)
+	@ copy /b .\files+.\vim_to_js .\allfiles
 	set OLD_PO_FILE_INPUT=yes
 	set OLD_PO_FILE_OUTPUT=yes
-	$(XGETTEXT) --default-domain=$(PACKAGE) --add-comments $(XGETTEXT_KEYWORDS) \
-		--files-from=.\files $(PO_VIM_JSLIST)
-	$(MV) $(PACKAGE).po $(PACKAGE).pot
-	"$(VIM)" -u NONE --not-a-term -S fixfilenames.vim $(PACKAGE).pot \
+	$(XGETTEXT) --default-domain=$(PACKAGE) --output=$(PACKAGE).pot \
+		--add-comments $(XGETTEXT_KEYWORDS) --files-from=.\allfiles
+	"$(VIMPROG)" -u NONE --not-a-term -S fixfilenames.vim $(PACKAGE).pot \
 		$(PO_VIM_INPUTLIST)
-	$(RM) *.js
+	$(RM) *.js .\vim_to_js
 
 # Only original translations with default encoding should be updated.
 # The files that are converted to a different encoding clearly state "DO NOT EDIT".
@@ -541,16 +497,39 @@ install-all: all
 		"$(VIMRUNTIME)\lang\%%l\LC_MESSAGES\$(PACKAGE).mo"
 
 cleanup-po: $(LANGUAGE).po
-	"$(VIM)" -u NONE -e -X -S cleanup.vim -c wq $(LANGUAGE).po
+	"$(VIMPROG)" -u NONE -e -X -S cleanup.vim -c wq $(LANGUAGE).po
 
 cleanup-po-all: $(POFILES)
-	!"$(VIM)" -u NONE -e -X -S cleanup.vim -c wq $**
+	!"$(VIMPROG)" -u NONE -e -X -S cleanup.vim -c wq $**
+
+#######
+# For translations of plug-ins
+#######
+
+# Preparing the POT file of the plug-in package
+POT_PLUGPACKAGE_PATH = $(MAKEDIR)
+$(PLUGPACKAGE).pot : $(PO_PLUG_INPUTLIST)
+	"$(VIMPROG)" -u NONE --not-a-term -S tojavascript.vim \
+		$(PLUGPACKAGE).pot $**
+	$(XGETTEXT) --from-code=UTF-8 --default-domain=$(PLUGPACKAGE) \
+		--package-name=$(PLUGPACKAGE) \
+		--output-dir="$(POT_PLUGPACKAGE_PATH)" \
+		--output=$(PLUGPACKAGE).pot --files-from=.\vim_to_js
+	"$(VIMPROG)" -u NONE --not-a-term -S fixfilenames.vim \
+		"$(POT_PLUGPACKAGE_PATH)\$(PLUGPACKAGE).pot" $**
+	$(RM) *.js .\vim_to_js
+
+# Converting the PO file of the plug-in package to the binary format of the MO file
+MO_PLUGPACKAGE_PATH = $(MAKEDIR)
+$(PLUGPACKAGE).mo : $(PO_PLUGPACKAGE)
+	$(MSGFMT) -o $(MO_PLUGPACKAGE_PATH)\$@ $?
+
 
 clean: checkclean
 	$(RM) *.mo
 	$(RM) *.pot
 	$(RM) *.orig
-	$(RM) files
+	$(RM) files allfiles
 	$(RM) sjiscorr.obj sjiscorr.exe
 #	$(RM) big5corr.obj big5corr.exe
 

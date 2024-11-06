@@ -598,7 +598,7 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 # ifdef bindtextdomain
 #  undef bindtextdomain
 # endif
-# define bindtextdomain(x, y) // empty
+# define bindtextdomain(x, y) ""
 # ifdef bind_textdomain_codeset
 #  undef bind_textdomain_codeset
 # endif
@@ -843,6 +843,10 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define EXPAND_ARGOPT		56
 #define EXPAND_TERMINALOPT	57
 #define EXPAND_KEYMAP		58
+#define EXPAND_DIRS_IN_CDPATH	59
+#define EXPAND_SHELLCMDLINE	60
+#define EXPAND_FINDFUNC		61
+
 
 // Values for exmode_active (0 is no exmode)
 #define EXMODE_NORMAL		1
@@ -898,6 +902,7 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define EW_DODOT	0x4000	// also files starting with a dot
 #define EW_EMPTYOK	0x8000	// no matches is not an error
 #define EW_NOTENV	0x10000	// do not expand environment variables
+#define EW_CDPATH	0x20000	// search in 'cdpath' too
 
 // Flags for find_file_*() functions.
 #define FINDFILE_FILE	0	// only files
@@ -1009,9 +1014,10 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 #define KEY_COMPLETE	0x103	// end of completion
 
 // Used for the first argument of do_map()
-#define MAPTYPE_MAP	0
-#define MAPTYPE_UNMAP	1
-#define MAPTYPE_NOREMAP	2
+#define MAPTYPE_MAP		0
+#define MAPTYPE_UNMAP		1
+#define MAPTYPE_NOREMAP		2
+#define MAPTYPE_UNMAP_LHS	3
 
 // Values for "noremap" argument of ins_typebuf().  Also used for
 // map->m_noremap and menu->noremap[].
@@ -1074,6 +1080,8 @@ extern int (*dyn_libintl_wputenv)(const wchar_t *envstring);
 // Values for flags argument of do_buffer()
 #define DOBUF_FORCEIT	1	// :cmd!
 #define DOBUF_NOPOPUP	2	// skip popup window buffers
+#define DOBUF_SKIPHELP	4	// skip or keep help buffers depending on b_help of the
+				// starting buffer
 
 // Values for sub_cmd and which_pat argument for search_regcomp()
 // Also used for which_pat argument for searchit()
@@ -1361,6 +1369,7 @@ enum auto_event
     EVENT_CURSORHOLD,		// cursor in same position for a while
     EVENT_CURSORHOLDI,		// idem, in Insert mode
     EVENT_CURSORMOVED,		// cursor was moved
+    EVENT_CURSORMOVEDC,		// cursor was moved in Command line mode
     EVENT_CURSORMOVEDI,		// cursor was moved in Insert mode
     EVENT_DIFFUPDATED,		// after diffs were updated
     EVENT_DIRCHANGED,		// after user changed directory
@@ -1394,6 +1403,7 @@ enum auto_event
     EVENT_INSERTENTER,		// when entering Insert mode
     EVENT_INSERTLEAVEPRE,	// just before leaving Insert mode
     EVENT_INSERTLEAVE,		// just after leaving Insert mode
+    EVENT_KEYINPUTPRE,		// before key input
     EVENT_MENUPOPUP,		// just before popup menu is displayed
     EVENT_MODECHANGED,		// after changing the mode
     EVENT_OPTIONSET,		// option was set
@@ -1500,6 +1510,8 @@ typedef enum
     , HLF_SPL	    // SpellLocal
     , HLF_PNI	    // popup menu normal item
     , HLF_PSI	    // popup menu selected item
+    , HLF_PMNI	    // popup menu matched text in normal item
+    , HLF_PMSI	    // popup menu matched text in selected item
     , HLF_PNK	    // popup menu normal item "kind"
     , HLF_PSK	    // popup menu selected item "kind"
     , HLF_PNX	    // popup menu normal item "menu" (extra text)
@@ -1525,7 +1537,7 @@ typedef enum
 		  'n', 'a', 'b', 'N', 'G', 'O', 'r', 's', 'S', 'c', 't', 'v', 'V', \
 		  'w', 'W', 'f', 'F', 'A', 'C', 'D', 'T', '-', '>', \
 		  'B', 'P', 'R', 'L', \
-		  '+', '=', '[', ']', '{', '}', 'x', 'X', \
+		  '+', '=', 'k', '<','[', ']', '{', '}', 'x', 'X', \
 		  '*', '#', '_', '!', '.', 'o', 'q', \
 		  'z', 'Z', 'g'}
 
@@ -1760,6 +1772,7 @@ void *vim_memset(void *, int, size_t);
 
 # define MB_STRICMP(d, s)	mb_strnicmp((char_u *)(d), (char_u *)(s), (int)MAXCOL)
 # define MB_STRNICMP(d, s, n)	mb_strnicmp((char_u *)(d), (char_u *)(s), (int)(n))
+# define MB_STRNICMP2(d, s, n1, n2)	mb_strnicmp2((char_u *)(d), (char_u *)(s), (n1), (n2))
 
 #define STRCAT(d, s)	    strcat((char *)(d), (char *)(s))
 #define STRNCAT(d, s, n)    strncat((char *)(d), (char *)(s), (size_t)(n))
@@ -2361,6 +2374,17 @@ typedef enum {
     FCERR_NOTMETHOD,	// function cannot be used as a method
     FCERR_FAILED,	// error while executing the function
 } funcerror_T;
+
+/*
+ * Array indexes used for cp_text[].
+ */
+typedef enum {
+    CPT_ABBR,		// "abbr"
+    CPT_KIND,		// "kind"
+    CPT_MENU,		// "menu"
+    CPT_INFO,		// "info"
+    CPT_COUNT,		// Number of entries
+} cpitem_T;
 
 /*
  * Type for the callback function that is invoked after an option value is

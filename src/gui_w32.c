@@ -274,13 +274,9 @@ gui_mch_set_rendering_options(char_u *s)
 
 // cproto fails on missing include files
 #ifndef PROTO
-
-# ifndef __MINGW32__
-#  include <shellapi.h>
-# endif
+# include <shellapi.h>
 # include <commctrl.h>
 # include <windowsx.h>
-
 #endif // PROTO
 
 #ifdef FEAT_MENU
@@ -5526,6 +5522,9 @@ gui_mch_prepare(int *argc, char **argv)
     }
 
 #ifdef FEAT_OLE
+# ifdef VIMDLL
+    if (mch_is_gui_executable())
+# endif
     {
 	int	bDoRestart = FALSE;
 

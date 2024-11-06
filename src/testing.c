@@ -99,7 +99,7 @@ ga_concat_shorten_esc(garray_T *gap, char_u *str)
 	return;
     }
 
-    for (p = str; *p != NUL; ++p)
+    for (p = str; *p != NUL; )
     {
 	same_len = 1;
 	s = p;
@@ -118,10 +118,13 @@ ga_concat_shorten_esc(garray_T *gap, char_u *str)
 	    vim_snprintf((char *)buf, NUMBUFLEN, "%d", same_len);
 	    ga_concat(gap, buf);
 	    ga_concat(gap, (char_u *)" times]");
-	    p = s - 1;
+	    p = s;
 	}
 	else
+	{
 	    ga_concat_esc(gap, p, clen);
+	    p += clen;
+	}
     }
 }
 
@@ -187,7 +190,7 @@ fill_assert_error(
 		{
 		    item2 = dict_find(got_d, hi->hi_key, -1);
 		    if (item2 == NULL || !tv_equal(&HI2DI(hi)->di_tv,
-						  &item2->di_tv, FALSE, FALSE))
+						  &item2->di_tv, FALSE))
 		    {
 			// item of exp_d not present in got_d or values differ.
 			dict_add_tv(exp_tv->vval.v_dict,
@@ -262,7 +265,7 @@ assert_equal_common(typval_T *argvars, assert_type_T atype)
 {
     garray_T	ga;
 
-    if (tv_equal(&argvars[0], &argvars[1], FALSE, FALSE)
+    if (tv_equal(&argvars[0], &argvars[1], FALSE)
 						   != (atype == ASSERT_EQUAL))
     {
 	prepare_assert_error(&ga);

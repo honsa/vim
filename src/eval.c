@@ -3259,7 +3259,7 @@ may_call_simple_func(
 	char_u *p = STRNCMP(arg, "<SNR>", 5) == 0 ? skipdigits(arg + 5) : arg;
 
 	if (to_name_end(p, TRUE) == parens)
-	    r = call_simple_func(arg, (int)(parens - arg), rettv);
+	    r = call_simple_func(arg, (size_t)(parens - arg), rettv);
     }
     return r;
 }
@@ -3947,6 +3947,40 @@ eval_addlist(typval_T *tv1, typval_T *tv2)
 }
 
 /*
+ * Left or right shift the number "tv1" by the number "tv2" and store the
+ * result in "tv1".
+ *
+ * Return OK or FAIL.
+ */
+    static int
+eval_shift_number(typval_T *tv1, typval_T *tv2, int shift_type)
+{
+    if (tv2->v_type != VAR_NUMBER || tv2->vval.v_number < 0)
+    {
+	// right operand should be a positive number
+	if (tv2->v_type != VAR_NUMBER)
+	    emsg(_(e_bitshift_ops_must_be_number));
+	else
+	    emsg(_(e_bitshift_ops_must_be_positive));
+	clear_tv(tv1);
+	clear_tv(tv2);
+	return FAIL;
+    }
+
+    if (tv2->vval.v_number > MAX_LSHIFT_BITS)
+	// shifting more bits than we have always results in zero
+	tv1->vval.v_number = 0;
+    else if (shift_type == EXPR_LSHIFT)
+	tv1->vval.v_number =
+	    (uvarnumber_T)tv1->vval.v_number << tv2->vval.v_number;
+    else
+	tv1->vval.v_number =
+	    (uvarnumber_T)tv1->vval.v_number >> tv2->vval.v_number;
+
+    return OK;
+}
+
+/*
  * Handle the bitwise left/right shift operator expression:
  *	var1 << var2
  *	var1 >> var2
@@ -3972,16 +4006,16 @@ eval5(char_u **arg, typval_T *rettv, evalarg_T *evalarg)
     {
 	char_u		*p;
 	int		getnext;
-	exprtype_T	type;
+	exprtype_T	exprtype;
 	int		evaluate;
 	typval_T	var2;
 	int		vim9script;
 
 	p = eval_next_non_blank(*arg, evalarg, &getnext);
 	if (p[0] == '<' && p[1] == '<')
-	    type = EXPR_LSHIFT;
+	    exprtype = EXPR_LSHIFT;
 	else if (p[0] == '>' && p[1] == '>')
-	    type = EXPR_RSHIFT;
+	    exprtype = EXPR_RSHIFT;
 	else
 	    return OK;
 
@@ -4026,27 +4060,8 @@ eval5(char_u **arg, typval_T *rettv, evalarg_T *evalarg)
 
 	if (evaluate)
 	{
-	    if (var2.v_type != VAR_NUMBER || var2.vval.v_number < 0)
-	    {
-		// right operand should be a positive number
-		if (var2.v_type != VAR_NUMBER)
-		    emsg(_(e_bitshift_ops_must_be_number));
-		else
-		    emsg(_(e_bitshift_ops_must_be_positive));
-		clear_tv(rettv);
-		clear_tv(&var2);
+	    if (eval_shift_number(rettv, &var2, exprtype) == FAIL)
 		return FAIL;
-	    }
-
-	    if (var2.vval.v_number > MAX_LSHIFT_BITS)
-		// shifting more bits than we have always results in zero
-		rettv->vval.v_number = 0;
-	    else if (type == EXPR_LSHIFT)
-		rettv->vval.v_number =
-		      (uvarnumber_T)rettv->vval.v_number << var2.vval.v_number;
-	    else
-		rettv->vval.v_number =
-		      (uvarnumber_T)rettv->vval.v_number >> var2.vval.v_number;
 	}
 
 	clear_tv(&var2);
@@ -4100,7 +4115,7 @@ eval_concat_str(typval_T *tv1, typval_T *tv2)
  * The numbers can be whole numbers or floats.
  */
     static int
-eval_addsub_num(typval_T *tv1, typval_T *tv2, int op)
+eval_addsub_number(typval_T *tv1, typval_T *tv2, int op)
 {
     int		error = FALSE;
     varnumber_T	n1, n2;
@@ -4290,12 +4305,119 @@ eval6(char_u **arg, typval_T *rettv, evalarg_T *evalarg)
 	    }
 	    else
 	    {
-		if (eval_addsub_num(rettv, &var2, op) == FAIL)
+		if (eval_addsub_number(rettv, &var2, op) == FAIL)
 		    return FAIL;
 	    }
 	    clear_tv(&var2);
 	}
     }
+    return OK;
+}
+
+/*
+ * Multiply or divide or compute the modulo of numbers "tv1" and "tv2" and
+ * store the result in "tv1".  The numbers can be whole numbers or floats.
+ */
+    static int
+eval_multdiv_number(typval_T *tv1, typval_T *tv2, int op)
+{
+    varnumber_T	n1, n2;
+    float_T	f1, f2;
+    int		error;
+    int		use_float = FALSE;
+
+    f1 = 0;
+    f2 = 0;
+    error = FALSE;
+    if (tv1->v_type == VAR_FLOAT)
+    {
+	f1 = tv1->vval.v_float;
+	use_float = TRUE;
+	n1 = 0;
+    }
+    else
+	n1 = tv_get_number_chk(tv1, &error);
+    clear_tv(tv1);
+    if (error)
+    {
+	clear_tv(tv2);
+	return FAIL;
+    }
+
+    if (tv2->v_type == VAR_FLOAT)
+    {
+	if (!use_float)
+	{
+	    f1 = n1;
+	    use_float = TRUE;
+	}
+	f2 = tv2->vval.v_float;
+	n2 = 0;
+    }
+    else
+    {
+	n2 = tv_get_number_chk(tv2, &error);
+	clear_tv(tv2);
+	if (error)
+	    return FAIL;
+	if (use_float)
+	    f2 = n2;
+    }
+
+    /*
+     * Compute the result.
+     * When either side is a float the result is a float.
+     */
+    if (use_float)
+    {
+	if (op == '*')
+	    f1 = f1 * f2;
+	else if (op == '/')
+	{
+#ifdef VMS
+	    // VMS crashes on divide by zero, work around it
+	    if (f2 == 0.0)
+	    {
+		if (f1 == 0)
+		    f1 = -1 * __F_FLT_MAX - 1L;   // similar to NaN
+		else if (f1 < 0)
+		    f1 = -1 * __F_FLT_MAX;
+		else
+		    f1 = __F_FLT_MAX;
+	    }
+	    else
+		f1 = f1 / f2;
+#else
+	    // We rely on the floating point library to handle divide
+	    // by zero to result in "inf" and not a crash.
+	    f1 = f1 / f2;
+#endif
+	}
+	else
+	{
+	    emsg(_(e_cannot_use_percent_with_float));
+	    return FAIL;
+	}
+	tv1->v_type = VAR_FLOAT;
+	tv1->vval.v_float = f1;
+    }
+    else
+    {
+	int	    failed = FALSE;
+
+	if (op == '*')
+	    n1 = n1 * n2;
+	else if (op == '/')
+	    n1 = num_divide(n1, n2, &failed);
+	else
+	    n1 = num_modulus(n1, n2, &failed);
+	if (failed)
+	    return FAIL;
+
+	tv1->v_type = VAR_NUMBER;
+	tv1->vval.v_number = n1;
+    }
+
     return OK;
 }
 
@@ -4317,8 +4439,6 @@ eval7(
     evalarg_T	*evalarg,
     int		want_string)  // after "." operator
 {
-    int	    use_float = FALSE;
-
     /*
      * Get the first expression.
      */
@@ -4335,9 +4455,6 @@ eval7(
 	typval_T    var2;
 	char_u	    *p;
 	int	    op;
-	varnumber_T n1, n2;
-	float_T	    f1, f2;
-	int	    error;
 
 	// "*=", "/=" and "%=" are assignments
 	p = eval_next_non_blank(*arg, evalarg, &getnext);
@@ -4359,26 +4476,6 @@ eval7(
 	    *arg = p;
 	}
 
-	f1 = 0;
-	f2 = 0;
-	error = FALSE;
-	if (evaluate)
-	{
-	    if (rettv->v_type == VAR_FLOAT)
-	    {
-		f1 = rettv->vval.v_float;
-		use_float = TRUE;
-		n1 = 0;
-	    }
-	    else
-		n1 = tv_get_number_chk(rettv, &error);
-	    clear_tv(rettv);
-	    if (error)
-		return FAIL;
-	}
-	else
-	    n1 = 0;
-
 	/*
 	 * Get the second variable.
 	 */
@@ -4393,81 +4490,9 @@ eval7(
 	    return FAIL;
 
 	if (evaluate)
-	{
-	    if (var2.v_type == VAR_FLOAT)
-	    {
-		if (!use_float)
-		{
-		    f1 = n1;
-		    use_float = TRUE;
-		}
-		f2 = var2.vval.v_float;
-		n2 = 0;
-	    }
-	    else
-	    {
-		n2 = tv_get_number_chk(&var2, &error);
-		clear_tv(&var2);
-		if (error)
-		    return FAIL;
-		if (use_float)
-		    f2 = n2;
-	    }
-
-	    /*
-	     * Compute the result.
-	     * When either side is a float the result is a float.
-	     */
-	    if (use_float)
-	    {
-		if (op == '*')
-		    f1 = f1 * f2;
-		else if (op == '/')
-		{
-#ifdef VMS
-		    // VMS crashes on divide by zero, work around it
-		    if (f2 == 0.0)
-		    {
-			if (f1 == 0)
-			    f1 = -1 * __F_FLT_MAX - 1L;   // similar to NaN
-			else if (f1 < 0)
-			    f1 = -1 * __F_FLT_MAX;
-			else
-			    f1 = __F_FLT_MAX;
-		    }
-		    else
-			f1 = f1 / f2;
-#else
-		    // We rely on the floating point library to handle divide
-		    // by zero to result in "inf" and not a crash.
-		    f1 = f1 / f2;
-#endif
-		}
-		else
-		{
-		    emsg(_(e_cannot_use_percent_with_float));
-		    return FAIL;
-		}
-		rettv->v_type = VAR_FLOAT;
-		rettv->vval.v_float = f1;
-	    }
-	    else
-	    {
-		int	    failed = FALSE;
-
-		if (op == '*')
-		    n1 = n1 * n2;
-		else if (op == '/')
-		    n1 = num_divide(n1, n2, &failed);
-		else
-		    n1 = num_modulus(n1, n2, &failed);
-		if (failed)
-		    return FAIL;
-
-		rettv->v_type = VAR_NUMBER;
-		rettv->vval.v_number = n1;
-	    }
-	}
+	    // Compute the result.
+	    if (eval_multdiv_number(rettv, &var2, op) == FAIL)
+		return FAIL;
     }
 
     return OK;
@@ -5898,6 +5923,37 @@ func_tv2string(typval_T *tv, char_u **tofree, int echo_style)
 }
 
 /*
+ * Return a textual representation of the object method in "tv", a VAR_PARTIAL.
+ * If the memory is allocated "tofree" is set to it, otherwise NULL.
+ * When "echo_style" is FALSE, put quotes around the function name as
+ * "function()", otherwise does not put quotes around function name.
+ * May return NULL.
+ */
+    static char_u *
+method_tv2string(typval_T *tv, char_u **tofree, int echo_style)
+{
+    char_u	buf[MAX_FUNC_NAME_LEN];
+    partial_T	*pt = tv->vval.v_partial;
+
+    size_t len = vim_snprintf((char *)buf, sizeof(buf), "<SNR>%d_%s.%s",
+			   pt->pt_func->uf_script_ctx.sc_sid,
+			   pt->pt_func->uf_class->class_name,
+			   pt->pt_func->uf_name);
+    if (len >= sizeof(buf))
+    {
+	if (echo_style)
+	{
+	    *tofree = NULL;
+	    return (char_u *)"function()";
+	}
+	else
+	    return *tofree = string_quote((char_u*)"", TRUE);
+    }
+
+    return *tofree = echo_style ? vim_strsave(buf) : string_quote(buf, TRUE);
+}
+
+/*
  * Return a textual representation of a partial in "tv".
  * If the memory is allocated "tofree" is set to it, otherwise NULL.
  * "numbuf" is used for a number.  May return NULL.
@@ -6063,10 +6119,10 @@ dict_tv2string(
  */
     static char_u *
 jobchan_tv2string(
-    typval_T	*tv,
-    char_u	**tofree,
-    char_u	*numbuf,
-    int		composite_val)
+    typval_T	*tv UNUSED,
+    char_u	**tofree UNUSED,
+    char_u	*numbuf UNUSED,
+    int		composite_val UNUSED)
 {
     char_u	*r = NULL;
 
@@ -6114,6 +6170,58 @@ class_tv2string(typval_T *tv, char_u **tofree)
 }
 
 /*
+ * Return a textual representation of an Object in "tv".
+ * If the memory is allocated "tofree" is set to it, otherwise NULL.
+ * When "copyID" is not zero replace recursive object with "...".
+ * When "restore_copyID" is FALSE, repeated items in the object are
+ * replaced with "...".  May return NULL.
+ */
+    static char_u *
+object_tv2string(
+    typval_T	*tv,
+    char_u	**tofree,
+    int		copyID,
+    int		restore_copyID,
+    char_u	*numbuf,
+    int		echo_style,
+    int		composite_val)
+{
+    char_u	*r = NULL;
+
+    object_T	*obj = tv->vval.v_object;
+    if (obj == NULL || obj->obj_class == NULL)
+    {
+	*tofree = NULL;
+	r = (char_u *)"object of [unknown]";
+    }
+    else if (copyID != 0 && obj->obj_copyID == copyID
+	    && obj->obj_class->class_obj_member_count != 0)
+    {
+	size_t n = 25 + strlen((char *)obj->obj_class->class_name);
+	r = alloc(n);
+	if (r != NULL)
+	    (void)vim_snprintf((char *)r, n, "object of %s {...}",
+						obj->obj_class->class_name);
+	*tofree = r;
+    }
+    else
+    {
+	int old_copyID;
+	if (restore_copyID)
+	    old_copyID = obj->obj_copyID;
+
+	obj->obj_copyID = copyID;
+	*tofree = object2string(obj, numbuf, copyID, echo_style,
+				restore_copyID, composite_val);
+	if (restore_copyID)
+	    obj->obj_copyID = old_copyID;
+	r = *tofree;
+    }
+
+    return r;
+}
+
+/*
  * Return a string with the string representation of a variable.
  * If the memory is allocated "tofree" is set to it, otherwise NULL.
  * "numbuf" is used for a number.
@@ -6144,7 +6252,7 @@ echo_string_core(
 	{
 	    // Only give this message once for a recursive call to avoid
 	    // flooding the user with errors.  And stop iterating over lists
-	    // and dicts.
+	    // and dicts and objects.
 	    did_echo_string_emsg = TRUE;
 	    emsg(_(e_variable_nested_too_deep_for_displaying));
 	}
@@ -6164,7 +6272,11 @@ echo_string_core(
 	    break;
 
 	case VAR_PARTIAL:
-	    r = partial_tv2string(tv, tofree, numbuf, copyID);
+	    if (tv->vval.v_partial == NULL
+		    || tv->vval.v_partial->pt_obj == NULL)
+		r = partial_tv2string(tv, tofree, numbuf, copyID);
+	    else
+		r = method_tv2string(tv, tofree, echo_style);
 	    break;
 
 	case VAR_BLOB:
@@ -6202,9 +6314,8 @@ echo_string_core(
 	    break;
 
 	case VAR_OBJECT:
-	    *tofree = r = object2string(tv->vval.v_object, numbuf, copyID,
-					echo_style, restore_copyID,
-					composite_val);
+	    r = object_tv2string(tv, tofree, copyID, restore_copyID,
+					 numbuf, echo_style, composite_val);
 	    break;
 
 	case VAR_FLOAT:

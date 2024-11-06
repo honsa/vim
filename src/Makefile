@@ -2189,7 +2189,7 @@ test check: unittests $(TERM_TEST) scripttests
 scripttests:
 	$(MAKE) -f Makefile $(VIMTARGET)
 	if test -n "$(MAKEMO)" -a -f $(PODIR)/Makefile; then \
-		cd $(PODIR); $(MAKE) -f Makefile check VIM=../$(VIMTARGET); \
+		cd $(PODIR); $(MAKE) -f Makefile check VIMPROG=../$(VIMTARGET); \
 	fi
 	-if test $(VIMTARGET) != vim -a ! -r vim; then \
 		ln -s $(VIMTARGET) vim; \
@@ -2346,7 +2346,7 @@ installrtbase: $(HELPSOURCE)/vim.1 $(DEST_VIM) $(VIMTARGET) $(DEST_RT) \
 		$(DEST_AUTO) $(DEST_AUTO)/dist $(DEST_AUTO)/xml \
 		$(DEST_AUTO)/rust $(DEST_AUTO)/cargo \
 		$(DEST_IMPORT) $(DEST_IMPORT)/dist \
-		$(DEST_PLUG) $(DEST_TUTOR) $(DEST_SPELL) $(DEST_COMP)
+		$(DEST_PLUG) $(DEST_TUTOR) $(DEST_TUTOR)/en $(DEST_SPELL) $(DEST_COMP)
 	-$(SHELL) ./installman.sh install $(DEST_MAN) "" $(INSTALLMANARGS)
 # Generate the help tags with ":helptags" to handle all languages.
 # Move the distributed tags file aside and restore it, to avoid it being
@@ -2354,10 +2354,8 @@ installrtbase: $(HELPSOURCE)/vim.1 $(DEST_VIM) $(VIMTARGET) $(DEST_RT) \
 	cd $(HELPSOURCE); if test -z "$(CROSS_COMPILING)" -a -f tags; then \
 		mv -f tags tags.dist; fi
 	@echo generating help tags
-	# We can assume Vim was build, but it may not have been installed,
-	# thus use the executable in the current directory.
-	-@BUILD_DIR="`pwd`"; cd $(HELPSOURCE); if test -z "$(CROSS_COMPILING)"; then \
-		$(MAKE) VIMEXE="$$BUILD_DIR/$(VIMTARGET)" vimtags; fi
+	-@BUILD_DIR=`pwd`; cd $(HELPSOURCE); if test -z "$(CROSS_COMPILING)"; then \
+		$(MAKE) VIMPROG="$$BUILD_DIR/$(VIMTARGET)" vimtags; fi
 	cd $(HELPSOURCE); \
 		files=`ls *.txt tags`; \
 		files="$$files `ls *.??x tags-?? 2>/dev/null || true`"; \
@@ -2475,8 +2473,10 @@ installgtutorbin: $(DEST_BIN)
 
 installtutor: $(DEST_RT) $(DEST_TUTOR)
 	-$(INSTALL_DATA) $(TUTORSOURCE)/README* $(TUTORSOURCE)/tutor* $(DEST_TUTOR)
+	-$(INSTALL_DATA) $(TUTORSOURCE)/en/* $(DEST_TUTOR)/en/
 	-rm -f $(DEST_TUTOR)/*.info
 	chmod $(HELPMOD) $(DEST_TUTOR)/*
+	chmod $(DIRMOD) $(DEST_TUTOR)/en
 
 # Install the spell files, if they exist.  This assumes at least the English
 # spell file is there.
@@ -2626,7 +2626,7 @@ ICONTHEMEPATH = $(DATADIR)/icons/hicolor
 DESKTOPPATH = $(DESTDIR)$(DATADIR)/applications
 KDEPATH = $(HOME)/.kde/share/icons
 install-icons:
-	if test -n "$(DESTDIR)"; then \
+	if test -n "$(DESTDIR)$(DATADIR)"; then \
 		$(MKDIR_P) $(ICON48PATH) $(ICON32PATH) \
 		$(ICON16PATH) $(DESKTOPPATH); \
 	fi
@@ -2673,7 +2673,8 @@ $(DESTDIR)$(exec_prefix) $(DEST_BIN) \
 		$(DEST_SYN)/modula2 $(DEST_SYN)/modula2/opt \
 		$(DEST_IND) $(DEST_FTP) \
 		$(DEST_LANG) $(DEST_KMAP) $(DEST_COMP) $(DEST_MACRO) \
-		$(DEST_PACK) $(DEST_TOOLS) $(DEST_TUTOR) $(DEST_SPELL) \
+		$(DEST_PACK) $(DEST_TOOLS) $(DEST_TUTOR) $(DEST_TUTOR)/en \
+		$(DEST_SPELL) \
 		$(DEST_AUTO) $(DEST_AUTO)/dist $(DEST_AUTO)/xml \
 		$(DEST_AUTO)/cargo $(DEST_AUTO)/rust \
 		$(DEST_IMPORT) $(DEST_IMPORT)/dist $(DEST_PLUG):
@@ -2847,6 +2848,8 @@ uninstall_runtime:
 	-rm -f $(SYS_OPTWIN_FILE)
 	-rm -f $(DEST_COL)/*.vim $(DEST_COL)/README.txt
 	-rm -rf $(DEST_COL)/tools
+	-rm -f $(DESKTOPPATH)/vim.desktop $(DESKTOPPATH)/gvim.desktop
+	-rm -f $(ICON16PATH)/gvim.png $(ICON32PATH)/gvim.png $(ICON48PATH)/gvim.png
 	-rm -rf $(DEST_COL)/lists
 	-rm -f $(DEST_SYN)/shared/*.vim $(DEST_SYN)/shared/README.txt
 	-rm -f $(DEST_SYN)/modula2/opt/*.vim
@@ -2854,6 +2857,7 @@ uninstall_runtime:
 	-rm -f $(DEST_IND)/*.vim $(DEST_IND)/README.txt
 	-rm -rf $(DEST_MACRO)
 	-rm -rf $(DEST_PACK)
+	-rm -rf $(DEST_TUTOR)/en
 	-rm -rf $(DEST_TUTOR)
 	-rm -rf $(DEST_SPELL)
 	-rm -rf $(DEST_TOOLS)
@@ -2939,6 +2943,7 @@ shadow:	runtime pixmaps
 				 ../../testdir/*.py \
 				 ../../testdir/python* \
 				 ../../testdir/pyxfile \
+				 ../../testdir/ru_RU \
 				 ../../testdir/sautest \
 				 ../../testdir/samples \
 				 ../../testdir/dumps \

@@ -194,7 +194,11 @@
 #ifdef HAVE_LSTAT
 # define mch_lstat(n, p)	lstat((n), (p))
 #else
-# define mch_lstat(n, p)	mch_stat((n), (p))
+# ifdef MSWIN
+#  define mch_lstat(n, p)	vim_lstat((n), (p))
+# else
+#  define mch_lstat(n, p)	mch_stat((n), (p))
+# endif
 #endif
 
 #ifdef VMS
@@ -361,6 +365,15 @@
 	    vim_free(p); \
 	    (p) = NULL; \
 	} \
+    } while (0)
+
+/*
+ * Free a string and set it's pointer to NULL and length to 0
+ */
+#define VIM_CLEAR_STRING(s) \
+    do { \
+	VIM_CLEAR(s.string); \
+	s.length = 0; \
     } while (0)
 
 // Whether a command index indicates a user command.

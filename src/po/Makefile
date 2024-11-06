@@ -11,7 +11,7 @@ include Make_all.mak
 
 PACKAGE = vim
 SHELL = /bin/sh
-VIM = ../vim
+VIMPROG = ../vim
 
 # MacOS sed is locale aware, set $LANG to avoid problems.
 SED = LANG=C sed
@@ -40,8 +40,8 @@ converted: $(MOCONVERTED)
 	$(MSGFMTCMD) -o $@ $<
 
 .po.ck:
-	$(VIM) -u NONE --noplugins -e -s -X --cmd "set enc=utf-8" -S check.vim \
-		-c "if error == 0 | q | else | num 2 | cq | endif" $<
+	$(VIMPROG) -u NONE --noplugins -e -s -X --cmd "set enc=utf-8" \
+		-S check.vim -c "if error == 0 | q | else | num 2 | cq | endif" $< >/dev/null
 	touch $@
 
 check: $(CHECKFILES)
@@ -107,55 +107,55 @@ nb.po: no.po
 ja.sjis.po: ja.po
 	@$(MAKE) sjiscorr
 	rm -f $@
-	iconv -f UTF-8 -t CP932 $< | ./sjiscorr > $@
+	iconv -f UTF-8 -t CP932 $? | ./sjiscorr > $@
 
 sjiscorr: sjiscorr.c
 	$(CC) -o sjiscorr sjiscorr.c
 
 ja.euc-jp.po: ja.po
-	iconv -f UTF-8 -t EUC-JP $< | \
+	iconv -f UTF-8 -t EUC-JP $? | \
 		$(SED) -e 's/charset=[uU][tT][fF]-8/charset=EUC-JP/' \
-			-e 's/# Original translations/# Generated from $<, DO NOT EDIT/' \
+			-e 's/# Original translations/# Generated from $?, DO NOT EDIT/' \
 			> $@
 
 # Convert cs.po to create cs.cp1250.po.
 cs.cp1250.po: cs.po
 	rm -f $@
-	iconv -f ISO-8859-2 -t CP1250 $< | \
+	iconv -f ISO-8859-2 -t CP1250 $? | \
 		$(SED) -e 's/charset=[iI][sS][oO]-8859-2/charset=CP1250/' \
-			-e 's/# Original translations/# Generated from $<, DO NOT EDIT/' \
+			-e 's/# Original translations/# Generated from $?, DO NOT EDIT/' \
 			> $@
 
 # Convert pl.po to create pl.cp1250.po.
 pl.cp1250.po: pl.po
 	rm -f $@
-	iconv -f ISO-8859-2 -t CP1250 $< | \
+	iconv -f ISO-8859-2 -t CP1250 $? | \
 		$(SED) -e 's/charset=[iI][sS][oO]-8859-2/charset=CP1250/' \
-			-e 's/# Original translations/# Generated from $<, DO NOT EDIT/' \
+			-e 's/# Original translations/# Generated from $?, DO NOT EDIT/' \
 			> $@
 
 # Convert pl.po to create pl.UTF-8.po.
 pl.UTF-8.po: pl.po
 	rm -f $@
-	iconv -f ISO-8859-2 -t UTF-8 $< | \
+	iconv -f ISO-8859-2 -t UTF-8 $? | \
 		$(SED) -e 's/charset=[iI][sS][oO]-8859-2/charset=UTF-8/' \
-			-e 's/# Original translations/# Generated from $<, DO NOT EDIT/' \
+			-e 's/# Original translations/# Generated from $?, DO NOT EDIT/' \
 			> $@
 
 # Convert sk.po to create sk.cp1250.po.
 sk.cp1250.po: sk.po
 	rm -f $@
-	iconv -f ISO-8859-2 -t CP1250 $< | \
+	iconv -f ISO-8859-2 -t CP1250 $? | \
 		$(SED) -e 's/charset=[iI][sS][oO]-8859-2/charset=CP1250/' \
-			-e 's/# Original translations/# Generated from $<, DO NOT EDIT/' \
+			-e 's/# Original translations/# Generated from $?, DO NOT EDIT/' \
 			> $@
 
 # Convert zh_CN.UTF-8.po to create zh_CN.po.
 zh_CN.po: zh_CN.UTF-8.po
 	rm -f $@
-	iconv -f UTF-8 -t GB2312 $< | \
+	iconv -f UTF-8 -t GB2312 $? | \
 		$(SED) -e 's/charset=[uU][tT][fF]-8/charset=GB2312/' \
-			-e 's/# Original translations/# Generated from $<, DO NOT EDIT/' \
+			-e 's/# Original translations/# Generated from $?, DO NOT EDIT/' \
 			> $@
 
 # Convert zh_CN.UTF-8.po to create zh_CN.cp936.po.
@@ -163,17 +163,17 @@ zh_CN.po: zh_CN.UTF-8.po
 # This used to convert from zh_CN.po, but that results in a conversion error.
 zh_CN.cp936.po: zh_CN.UTF-8.po
 	rm -f $@
-	iconv -f UTF-8 -t CP936 $< | \
+	iconv -f UTF-8 -t CP936 $? | \
 		$(SED) -e 's/charset=[uU][tT][fF]-8/charset=GBK/' \
-			-e 's/# Original translations/# Generated from $<, DO NOT EDIT/' \
+			-e 's/# Original translations/# Generated from $?, DO NOT EDIT/' \
 			> $@
 
 # Convert zh_TW.UTF-8.po to create zh_TW.po.
 zh_TW.po: zh_TW.UTF-8.po
 	rm -f $@
-	iconv -f UTF-8 -t BIG5 $< | \
+	iconv -f UTF-8 -t BIG5 $? | \
 		$(SED) -e 's/charset=[uU][tT][fF]-8/charset=BIG5/' \
-			-e 's/# Original translations/# Generated from $<, DO NOT EDIT/' \
+			-e 's/# Original translations/# Generated from $?, DO NOT EDIT/' \
 			> $@
 
 
@@ -197,7 +197,7 @@ zh_TW.po: zh_TW.UTF-8.po
 #zh_TW.po: zh_TW.UTF-8.po
 #	@$(MAKE) big5corr
 #	rm -f $@
-#	iconv -f UTF-8 -t BIG5 $< | ./big5corr > $@
+#	iconv -f UTF-8 -t BIG5 $? | ./big5corr > $@
 
 
 # 06.11.23, added by Restorer
@@ -209,25 +209,25 @@ zh_TW.po: zh_TW.UTF-8.po
 # Convert ko.UTF-8.po to create ko.po.
 ko.po: ko.UTF-8.po
 	rm -f $@
-	iconv -f UTF-8 -t EUC-KR $< | \
+	iconv -f UTF-8 -t EUC-KR $? | \
 		$(SED) -e 's/charset=[uU][tT][fF]-8/charset=EUC-KR/' \
-			-e 's/# Original translations/# Generated from $<, DO NOT EDIT/' \
+			-e 's/# Original translations/# Generated from $?, DO NOT EDIT/' \
 			> $@
 
 # Convert ru.po to create ru.cp1251.po.
 ru.cp1251.po: ru.po
 	rm -f $@
-	iconv -f UTF-8 -t CP1251 $< | \
+	iconv -f UTF-8 -t CP1251 $? | \
 		$(SED) -e 's/charset=[uU][tT][fF]-8/charset=CP1251/' \
-			-e 's/# Original translations/# Generated from $<, DO NOT EDIT/' \
+			-e 's/# Original translations/# Generated from $?, DO NOT EDIT/' \
 			> $@
 
 # Convert uk.po to create uk.cp1251.po.
 uk.cp1251.po: uk.po
 	rm -f $@
-	iconv -f UTF-8 -t CP1251 $< | \
+	iconv -f UTF-8 -t CP1251 $? | \
 		$(SED) -e 's/charset=[uU][tT][fF]-8/charset=CP1251/' \
-			-e 's/# Original translations/# Generated from $<, DO NOT EDIT/' \
+			-e 's/# Original translations/# Generated from $?, DO NOT EDIT/' \
 			> $@
 
 prefixcheck:
@@ -241,6 +241,7 @@ prefixcheck:
 clean: checkclean
 	rm -f core core.* *.old.po *.mo *.pot sjiscorr
 	rm -f LINGUAS vim.desktop gvim.desktop tmp_*desktop
+	rm -f ./allfiles
 #	rm -f big5corr
 
 distclean: clean
@@ -261,21 +262,25 @@ PO_INPUTLIST = \
 
 $(PACKAGE).pot: $(PO_INPUTLIST) $(PO_VIM_INPUTLIST)
 	# Convert the Vim scripts to (what looks like) Javascript.
-	$(VIM) -u NONE --not-a-term -S tojavascript.vim $(PACKAGE).pot $(PO_VIM_INPUTLIST)
+	$(VIMPROG) -u NONE --not-a-term -S tojavascript.vim $(PACKAGE).pot \
+		$(PO_VIM_INPUTLIST)
+	@ echo ${PO_INPUTLIST} | tr ' ' '\n' > ./allfiles
+	@ cat ./vim_to_js >> ./allfiles
 	# Create vim.pot.
-	$(XGETTEXT) --default-domain=$(PACKAGE) --add-comments \
-		$(XGETTEXT_KEYWORDS) $(PO_INPUTLIST) $(PO_VIM_JSLIST)
-	mv -f $(PACKAGE).po $(PACKAGE).pot
+	$(XGETTEXT) --default-domain=$(PACKAGE) --output=$(PACKAGE).pot \
+		--add-comments $(XGETTEXT_KEYWORDS) --files-from=./allfiles
 	# Fix Vim scripts names, so that "gf" works.
-	$(VIM) -u NONE --not-a-term -S fixfilenames.vim $(PACKAGE).pot $(PO_VIM_INPUTLIST)
+	$(VIMPROG) -u NONE --not-a-term -S fixfilenames.vim $(PACKAGE).pot \
+		$(PO_VIM_INPUTLIST)
 	# Delete the temporary files.
-	rm *.js
+	rm -f *.js ./vim_to_js
 
 vim.desktop: vim.desktop.in $(POFILES)
 	echo $(LANGUAGES) | tr " " "\n" |$(SED) -e '/\./d' | sort > LINGUAS
 	$(MSGFMT) --desktop -d . --template vim.desktop.in -o tmp_vim.desktop
 	rm -f LINGUAS
-	if command -v desktop-file-validate; then desktop-file-validate tmp_vim.desktop; fi
+	if command -v desktop-file-validate; \
+		then desktop-file-validate tmp_vim.desktop; fi
 	mv tmp_vim.desktop vim.desktop
 
 # The dependency on vim.desktop is only to avoid the two targets are build at
@@ -284,7 +289,8 @@ gvim.desktop: gvim.desktop.in $(POFILES) vim.desktop
 	echo $(LANGUAGES) | tr " " "\n" |$(SED) -e '/\./d' | sort > LINGUAS
 	$(MSGFMT) --desktop -d . --template gvim.desktop.in -o tmp_gvim.desktop
 	rm -f LINGUAS
-	if command -v desktop-file-validate; then desktop-file-validate tmp_gvim.desktop; fi
+	if command -v desktop-file-validate; \
+		then desktop-file-validate tmp_gvim.desktop; fi
 	mv tmp_gvim.desktop gvim.desktop
 
 # Only original translations with default encoding should be updated.
@@ -301,3 +307,28 @@ $(LANGUAGES):
 	else \
 	    echo "msgmerge for $@.po failed!"; mv $@.po.old $@.po; \
 	fi
+
+
+#######
+# For translations of plug-ins
+#######
+
+# Preparing the POT file of the plug-in package
+POT_PLUGPACKAGE_PATH = $(PWD)
+$(PLUGPACKAGE).pot: $(PO_PLUG_INPUTLIST)
+	$(VIMPROG) -u NONE --not-a-term -S tojavascript.vim \
+		$(PLUGPACKAGE).pot $?
+	$(XGETTEXT) --from-code=UTF-8 --default-domain=$(PLUGPACKAGE) \
+		--package-name=$(PLUGPACKAGE) \
+		--output-dir=$(POT_PLUGPACKAGE_PATH) \
+		--output=$(PLUGPACKAGE).pot --files-from=./vim_to_js
+	$(VIMPROG) -u NONE --not-a-term -S fixfilenames.vim \
+		$(POT_PLUGPACKAGE_PATH)/$(PLUGPACKAGE).pot $?
+	rm -f *.js ./vim_to_js
+
+# Converting the PO file of the plug-in package to the binary format of the MO
+MO_PLUGPACKAGE_PATH = $(PWD)
+$(PLUGPACKAGE).mo: $(PO_PLUGPACKAGE)
+	$(MSGFMTCMD) -o $(MO_PLUGPACKAGE_PATH)/$@ $?
+
+# vim: set noet sw=8 ts=8 sts=0 wm=0 tw=0 ft=make:

@@ -661,6 +661,44 @@ def Test_object_not_set()
     Func()
   END
   v9.CheckSourceFailure(lines, 'E1363: Incomplete type', 1)
+
+  # Reference a object variable through a null class object which is stored in a
+  # variable of type "any".
+  lines =<< trim END
+    vim9script
+
+    def Z()
+      var o: any = null_object
+      o.v = 4
+    enddef
+    Z()
+  END
+  v9.CheckSourceFailure(lines, 'E1360: Using a null object', 2)
+
+  # Do "echom" of a null object variable.
+  lines =<< trim END
+    vim9script
+
+    def X()
+      var x = null_object
+      echom x
+    enddef
+    X()
+  END
+  v9.CheckSourceFailure(lines, 'E1324: Using an Object as a String', 2)
+
+  # Use a null object variable that vim wants to force to number.
+  lines =<< trim END
+    vim9script
+
+    def X()
+      var o = null_object
+      var l = [ 1, o]
+      sort(l, 'N')
+    enddef
+    X()
+  END
+  v9.CheckSourceFailure(lines, 'E1324: Using an Object as a String', 3)
 enddef
 
 " Null object assignment and comparison
@@ -2246,6 +2284,47 @@ def Test_class_object_to_string()
     assert_equal("object of TextPosition {lnum: 1, col: 22}", string(pos))
   END
   v9.CheckSourceSuccess(lines)
+
+  # check string() with object nesting
+  lines =<< trim END
+    vim9script
+    class C
+        var nest1: C
+        var nest2: C
+        def Init(n1: C, n2: C)
+            this.nest1 = n1
+            this.nest2 = n2
+        enddef
+    endclass
+
+    var o1 = C.new()
+    var o2 = C.new()
+    o1.Init(o1, o2)
+    o2.Init(o2, o1)
+
+    # The following previously put's vim into an infinite loop.
+
+    var expect = "object of C {nest1: object of C {...}, nest2: object of C {nest1: object of C {...}, nest2: object of C {...}}}"
+    assert_equal(expect, string(o1))
+  END
+  v9.CheckSourceSuccess(lines)
+
+  lines =<< trim END
+    vim9script
+
+    class B
+    endclass
+
+    class C
+        var b: B
+        var c: C
+    endclass
+
+    var o1 = C.new(B.new(), C.new(B.new()))
+    var expect = "object of C {b: object of B {}, c: object of C {b: object of B {}, c: object of [unknown]}}"
+    assert_equal(expect, string(o1))
+  END
+  v9.CheckSourceSuccess(lines)
 enddef
 
 def Test_interface_basics()
@@ -3169,6 +3248,141 @@ def Test_using_base_class()
 
     var obj = Child.new()
     assert_equal(true, obj.success)
+  END
+  v9.CheckSourceSuccess(lines)
+enddef
+
+def Test_super_dispatch()
+  # See #15448 and #15463
+  var lines =<< trim END
+    vim9script
+
+    class A
+        def String(): string
+            return 'A'
+        enddef
+    endclass
+
+    class B extends A
+        def String(): string
+            return super.String()
+        enddef
+    endclass
+
+    class C extends B
+    endclass
+
+    assert_equal('A', C.new().String())
+  END
+  v9.CheckSourceSuccess(lines)
+
+  lines =<< trim END
+    vim9script
+
+    class A
+        def F(): string
+            return 'AA'
+        enddef
+    endclass
+
+    class B extends A
+        def F(): string
+            return 'BB'
+        enddef
+        def S(): string
+            return super.F()
+        enddef
+        def S0(): string
+            return this.S()
+        enddef
+    endclass
+
+    class C extends B
+        def F(): string
+            return 'CC'
+        enddef
+        def ToB(): string
+            return super.F()
+        enddef
+    endclass
+
+    assert_equal('AA', B.new().S())
+    assert_equal('AA', C.new().S())
+    assert_equal('AA', B.new().S0())
+    assert_equal('AA', C.new().S0())
+
+    assert_equal('BB', C.new().ToB())
+
+    assert_equal('CC', C.new().F())
+    assert_equal('BB', B.new().F())
+    assert_equal('AA', A.new().F())
+  END
+  v9.CheckSourceSuccess(lines)
+
+  lines =<< trim END
+    vim9script
+
+    var call_chain: list<string>
+
+    abstract class A
+        abstract def _G(): string
+
+        def F(): string
+            call_chain->add('A.F()')
+            return this._G()
+        enddef
+        def _H(): string
+            call_chain->add('A._H()')
+            return this.F()
+        enddef
+    endclass
+
+    class B extends A
+        def _G(): string
+            call_chain->add('B.G()')
+            return 'BBB'
+        enddef
+        def SF(): string
+            call_chain->add('B.SF()')
+            return super._H()
+        enddef
+    endclass
+
+    class C extends B
+    endclass
+
+    class D extends C
+        def SF(): string
+            call_chain->add('D.SF()')
+            return super.SF()
+        enddef
+    endclass
+
+    class E extends D
+        def SF(): string
+            call_chain->add('E.SF()')
+            return super.SF()
+        enddef
+    endclass
+
+    class F extends E
+        def _G(): string
+            call_chain->add('F._G()')
+            return 'FFF'
+        enddef
+    endclass
+
+    # E.new() -> A.F() -> B._G()
+    call_chain = []
+    var o1 = E.new()
+    assert_equal('BBB', o1.F())
+    assert_equal(['A.F()', 'B.G()'], call_chain)
+
+    # F.new() -> E.SF() -> D.SF() -> B.SF() -> A._H() -> A.F() -> F._G()
+    call_chain = []
+    var o2 = F.new()
+    assert_equal('FFF', o2.SF())
+    assert_equal(['E.SF()', 'D.SF()', 'B.SF()', 'A._H()', 'A.F()', 'F._G()'], call_chain)
   END
   v9.CheckSourceSuccess(lines)
 enddef
@@ -7162,6 +7376,47 @@ def Test_null_object_method_call()
     T()
   END
   v9.CheckSourceFailure(lines, 'E1360: Using a null object', 2)
+
+  # Calling an object method defined in a class that is extended. This differs
+  # from the previous by invoking ISN_METHODCALL instead of ISN_DCALL.
+  lines =<< trim END
+    vim9script
+
+    class C0
+      def F()
+      enddef
+    endclass
+
+    class C extends C0
+    endclass
+
+    def X()
+      var o: C0 = null_object
+      o.F()
+    enddef
+    X()
+  END
+  v9.CheckSourceFailure(lines, 'E1360: Using a null object', 2)
+
+  # Getting a function ref an object method.
+  lines =<< trim END
+    vim9script
+
+    class C0
+      def F()
+      enddef
+    endclass
+
+    class C extends C0
+    endclass
+
+    def X()
+      var o: C0 = null_object
+      var XXX = o.F
+    enddef
+    X()
+  END
+  v9.CheckSourceFailure(lines, 'E1360: Using a null object', 2)
 enddef
 
 " Test for using a dict as an object member
@@ -10425,6 +10680,20 @@ func Test_object_string()
   call v9.CheckSourceSuccess(lines)
 endfunc
 
+" Test for using the string() builtin method with an object's method
+def Test_method_string()
+  var lines =<< trim END
+    vim9script
+    class A
+      def F()
+      enddef
+    endclass
+    assert_match('function(''<SNR>\d\+_A\.F'')', string(A.new().F))
+  END
+  v9.CheckScriptSuccess(lines)
+enddef
+
+
 " Test for using a class in the class definition
 def Test_Ref_Class_Within_Same_Class()
   var lines =<< trim END
@@ -10484,6 +10753,156 @@ def Test_Ref_Class_Within_Same_Class()
     endclass
   END
   v9.CheckScriptFailure(lines, 'E1347: Not a valid interface: A', 3)
+enddef
+
+" Test for comparing a class referencing itself
+def Test_Object_Compare_With_Recursive_Class_Ref()
+  var lines =<< trim END
+    vim9script
+
+    class C
+    public var nest: C
+    endclass
+
+    var o1 = C.new()
+    o1.nest = o1
+
+    var result = o1 == o1
+    assert_equal(true, result)
+  END
+  v9.CheckScriptSuccess(lines)
+
+  lines =<< trim END
+    vim9script
+
+    class C
+        public var nest: C
+    endclass
+    var o1 = C.new()
+    var o2 = C.new(C.new())
+
+    var result = o1 == o2
+    assert_equal(false, result)
+  END
+  v9.CheckScriptSuccess(lines)
+
+  lines =<< trim END
+    vim9script
+    class C
+        var nest1: C
+        var nest2: C
+        def Init(n1: C, n2: C)
+            this.nest1 = n1
+            this.nest2 = n2
+        enddef
+    endclass
+
+    var o1 = C.new()
+    var o2 = C.new()
+    o1.Init(o1, o2)
+    o2.Init(o2, o1)
+
+    var result = o1 == o2
+    assert_equal(true, result)
+  END
+  v9.CheckScriptSuccess(lines)
+enddef
+
+" Test for comparing a class with nesting objects
+def Test_Object_Compare_With_Nesting_Objects()
+  # On a compare, after vim equal recurses 1000 times, not finding an unequal,
+  # return the compare is equal.
+  # Test that limit
+
+  var lines =<< trim END
+    vim9script
+    class C
+      public var n: number
+      public var nest: C
+
+      # Create a "C" that chains/nests to indicated depth.
+      # return {head: firstC, tail: lastC}
+      static def CreateNested(depth: number): dict<C>
+        var first = C.new(1, null_object)
+        var last = first
+        for i in range(2, depth)
+          last.nest = C.new(i, null_object)
+          last = last.nest
+        endfor
+        return {head: first, tail: last}
+      enddef
+
+      # Return pointer to nth item in chain.
+      def GetLink(depth: number): C
+        var count = 1
+        var p: C = this
+        while count < depth
+          p = p.nest
+          if p == null
+            throw "too deep"
+          endif
+          count += 1
+        endwhile
+        return p
+      enddef
+
+      # Return the length of the chain
+      def len(): number
+        var count = 1
+        var p: C = this
+        while p.nest != null
+          p = p.nest
+          count += 1
+        endwhile
+        return count
+      enddef
+    endclass
+
+    var chain = C.CreateNested(3)
+    var s = "object of C {n: 1, nest: object of C {n: 2, nest: object of C {n: 3, nest: object of [unknown]}}}"
+    assert_equal(s, string(chain.head))
+    assert_equal(3, chain.head->len())
+
+    var chain1 = C.CreateNested(100)
+    var chain2 = C.CreateNested(100)
+    assert_true(chain1.head == chain2.head)
+
+    # modify the tail of chain2, compare not equal
+    chain2.tail.n = 123456
+    assert_true(chain1.head != chain2.head)
+
+    # a tail of a different length compares not equal
+    chain2 = C.CreateNested(101)
+    assert_true(chain1.head != chain2.head)
+
+    chain1 = C.CreateNested(1000)
+    chain2 = C.CreateNested(1000)
+    assert_true(chain1.head == chain2.head)
+
+    # modify the tail of chain2, compare not equal
+    chain2.tail.n = 123456
+    assert_true(chain1.head != chain2.head)
+
+    # try a chain longer that the limit
+    chain1 = C.CreateNested(1001)
+    chain2 = C.CreateNested(1001)
+    assert_true(chain1.head == chain2.head)
+
+    # modify the tail, but still equal
+    chain2.tail.n = 123456
+    assert_true(chain1.head == chain2.head)
+
+    # remove 2 items from front, shorten the chain by two.
+    chain1.head = chain1.head.GetLink(3)
+    chain2.head = chain2.head.GetLink(3)
+    assert_equal(3, chain1.head.n)
+    assert_equal(3, chain2.head.n)
+    assert_equal(999, chain1.head->len())
+    assert_equal(999, chain2.head->len())
+    # Now less than the limit, compare not equal
+    assert_true(chain1.head != chain2.head)
+  END
+  v9.CheckScriptSuccess(lines)
 enddef
 
 " Test for using a compound operator from a lambda function in an object method
@@ -10742,6 +11161,56 @@ def Test_class_object_index()
     a[10] = 1
   END
   v9.CheckScriptFailure(lines, 'E689: Index not allowed after a object: a[10] = 1', 5)
+enddef
+
+def Test_class_member_init_typecheck()
+  # Ensure the class member is assigned its declared type.
+  var lines =<< trim END
+    vim9script
+    class S
+        static var l: list<string> = []
+    endclass
+    S.l->add(123)
+  END
+  v9.CheckScriptFailure(lines, 'E1012: Type mismatch; expected string but got number', 5)
+
+  # Ensure the initializer value and the declared type match.
+  lines =<< trim END
+    vim9script
+    class S
+        var l: list<string> = [1, 2, 3]
+    endclass
+    var o = S.new()
+  END
+  v9.CheckScriptFailure(lines, 'E1382: Variable "l": type mismatch, expected list<string> but got list<number>')
+
+  # Ensure the class member is assigned its declared type.
+  lines =<< trim END
+    vim9script
+    class S
+        var l: list<string> = []
+    endclass
+    var o = S.new()
+    o.l->add(123)
+  END
+  v9.CheckScriptFailure(lines, 'E1012: Type mismatch; expected string but got number', 6)
+enddef
+
+def Test_class_cast()
+  var lines =<< trim END
+    vim9script
+    class A
+    endclass
+    class B extends A
+      var mylen: number
+    endclass
+    def F(o: A): number
+      return (<B>o).mylen
+    enddef
+
+    defcompile F
+  END
+  v9.CheckScriptSuccess(lines)
 enddef
 
 " vim: ts=8 sw=2 sts=2 expandtab tw=80 fdm=marker

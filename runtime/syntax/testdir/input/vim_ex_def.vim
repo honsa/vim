@@ -85,7 +85,7 @@ def Foo()
 enddef | echo "Foo"
 
 def Foo()
-enddef " comment
+enddef # comment
 
 
 " parameters
@@ -105,5 +105,17 @@ enddef
 def Foo()
   # Vim9-script comment
   "useless string"
+enddef
+
+
+" leading command separator
+
+echo "Foo" | def Foo()
+enddef
+
+
+" command modifiers
+
+silent! def Foo()
 enddef
 

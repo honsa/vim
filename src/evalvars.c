@@ -160,7 +160,7 @@ static struct vimvar
     {VV_NAME("python3_version",	 VAR_NUMBER), NULL, VV_RO},
     {VV_NAME("t_typealias",	 VAR_NUMBER), NULL, VV_RO},
     {VV_NAME("t_enum",		 VAR_NUMBER), NULL, VV_RO},
-    {VV_NAME("t_enumvalue",	 VAR_NUMBER), NULL, VV_RO},
+    {VV_NAME("t_enumvalue",	 VAR_NUMBER), NULL, VV_RO}
 };
 
 // shorthand
@@ -4100,7 +4100,7 @@ set_var_const(
 
 	    // Modifying a final variable with a List value using the "+="
 	    // operator is allowed.  For other types, it is not allowed.
-	    if (((flags & ASSIGN_FOR_LOOP) == 0
+	    if ((((flags & ASSIGN_FOR_LOOP) == 0 || (flags & ASSIGN_DECL) == 0)
 			&& ((flags & ASSIGN_COMPOUND_OP) == 0
 			    || !type_inplace_modifiable))
 				 ? var_check_permission(di, name) == FAIL

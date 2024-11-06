@@ -1708,7 +1708,7 @@ win_count(void)
     int
 make_windows(
     int		count,
-    int		vertical UNUSED)  // split windows vertically if TRUE
+    int		vertical)  // split windows vertically if TRUE
 {
     int		maxcount;
     int		todo;
@@ -2511,7 +2511,7 @@ close_windows(
     for (wp = firstwin; wp != NULL && !ONE_WINDOW; )
     {
 	if (wp->w_buffer == buf && (!keep_curwin || wp != curwin)
-		&& !(wp->w_closing || wp->w_buffer->b_locked > 0))
+		&& !(win_locked(wp) || wp->w_buffer->b_locked > 0))
 	{
 	    if (win_close(wp, FALSE) == FAIL)
 		// If closing the window fails give up, to avoid looping
@@ -2532,7 +2532,7 @@ close_windows(
 	if (tp != curtab)
 	    FOR_ALL_WINDOWS_IN_TAB(tp, wp)
 		if (wp->w_buffer == buf
-		    && !(wp->w_closing || wp->w_buffer->b_locked > 0))
+		    && !(win_locked(wp) || wp->w_buffer->b_locked > 0))
 		{
 		    win_close_othertab(wp, FALSE, tp);
 
@@ -2654,10 +2654,10 @@ win_close_buffer(win_T *win, int action, int abort_if_last)
 	bufref_T    bufref;
 
 	set_bufref(&bufref, curbuf);
-	win->w_closing = TRUE;
+	win->w_locked = TRUE;
 	close_buffer(win, win->w_buffer, action, abort_if_last, TRUE);
 	if (win_valid_any_tab(win))
-	    win->w_closing = FALSE;
+	    win->w_locked = FALSE;
 	// Make sure curbuf is valid. It can become invalid if 'bufhidden' is
 	// "wipe".
 	if (!bufref_valid(&bufref))
@@ -2705,7 +2705,7 @@ win_close(win_T *win, int free_buf)
     if (window_layout_locked(CMD_close))
 	return FAIL;
 
-    if (win->w_closing || (win->w_buffer != NULL
+    if (win_locked(win) || (win->w_buffer != NULL
 					       && win->w_buffer->b_locked > 0))
 	return FAIL; // window is already being closed
     if (win_unlisted(win))
@@ -2754,19 +2754,19 @@ win_close(win_T *win, int free_buf)
 	    other_buffer = TRUE;
 	    if (!win_valid(win))
 		return FAIL;
-	    win->w_closing = TRUE;
+	    win->w_locked = TRUE;
 	    apply_autocmds(EVENT_BUFLEAVE, NULL, NULL, FALSE, curbuf);
 	    if (!win_valid(win))
 		return FAIL;
-	    win->w_closing = FALSE;
+	    win->w_locked = FALSE;
 	    if (last_window())
 		return FAIL;
 	}
-	win->w_closing = TRUE;
+	win->w_locked = TRUE;
 	apply_autocmds(EVENT_WINLEAVE, NULL, NULL, FALSE, curbuf);
 	if (!win_valid(win))
 	    return FAIL;
-	win->w_closing = FALSE;
+	win->w_locked = FALSE;
 	if (last_window())
 	    return FAIL;
 #ifdef FEAT_EVAL
@@ -3346,7 +3346,7 @@ win_close_othertab(win_T *win, int free_buf, tabpage_T *tp)
 
     // Get here with win->w_buffer == NULL when win_close() detects the tab
     // page changed.
-    if (win->w_closing || (win->w_buffer != NULL
+    if (win_locked(win) || (win->w_buffer != NULL
 					       && win->w_buffer->b_locked > 0))
 	return; // window is already being closed
 
@@ -3486,7 +3486,7 @@ win_free_all(void)
     win_T *
 winframe_remove(
     win_T	*win,
-    int		*dirp UNUSED,	// set to 'v' or 'h' for direction if 'ea'
+    int		*dirp,		// set to 'v' or 'h' for direction if 'ea'
     tabpage_T	*tp,		// tab page "win" is in, NULL for current
     frame_T	**unflat_altfr)	// if not NULL, set to pointer of frame that got
 				// the space, and it is not flattened
@@ -3782,15 +3782,24 @@ win_altframe(
     static tabpage_T *
 alt_tabpage(void)
 {
-    tabpage_T	*tp;
+    tabpage_T	*tp = NULL;
+    int		forward;
 
-    // Use the next tab page if possible.
-    if (curtab->tp_next != NULL)
-	return curtab->tp_next;
+    // Use the last accessed tab page, if possible.
+    if ((tcl_flags & TCL_USELAST) && valid_tabpage(lastused_tabpage))
+	return lastused_tabpage;
 
-    // Find the last but one tab page.
-    for (tp = first_tabpage; tp->tp_next != curtab; tp = tp->tp_next)
-	;
+    // Use the next tab page, if possible.
+    forward = curtab->tp_next != NULL &&
+	    ((tcl_flags & TCL_LEFT) == 0 || curtab == first_tabpage);
+
+    if (forward)
+	tp = curtab->tp_next;
+    else
+	// Use the previous tab page.
+	for (tp = first_tabpage; tp->tp_next != curtab; tp = tp->tp_next)
+	    ;
+
     return tp;
 }
 
@@ -4598,6 +4607,11 @@ free_tabpage(tabpage_T *tp)
  * It will edit the current buffer, like after ":split".
  * When "after" is 0 put it just after the current Tab page.
  * Otherwise put it just before tab page "after".
+ *
+ * Does not trigger WinNewPre, since the window structures
+ * are not completely setup yet and could cause dereferencing
+ * NULL pointers
+ *
  * Return FAIL or OK.
  */
     int
@@ -4630,8 +4644,6 @@ win_new_tabpage(int after)
 
     newtp->tp_localdir = (tp->tp_localdir == NULL)
 				    ? NULL : vim_strsave(tp->tp_localdir);
-
-    trigger_winnewpre();
 
     // Create a new empty window.
     if (win_alloc_firstwin(tp->tp_curwin) == OK)
@@ -4846,8 +4858,8 @@ tabpage_index(tabpage_T *ftp)
  */
     static int
 leave_tabpage(
-    buf_T	*new_curbuf UNUSED,    // what is going to be the new curbuf,
-				       // NULL if unknown
+    buf_T	*new_curbuf,		// what is going to be the new curbuf,
+					// NULL if unknown
     int		trigger_leave_autocmds)
 {
     tabpage_T	*tp = curtab;
@@ -4899,7 +4911,7 @@ leave_tabpage(
     static void
 enter_tabpage(
     tabpage_T	*tp,
-    buf_T	*old_curbuf UNUSED,
+    buf_T	*old_curbuf,
     int		trigger_enter_autocmds,
     int		trigger_leave_autocmds)
 {
@@ -5828,10 +5840,7 @@ win_free(
     win_free_lsize(wp);
 
     for (i = 0; i < wp->w_tagstacklen; ++i)
-    {
-	vim_free(wp->w_tagstack[i].tagname);
-	vim_free(wp->w_tagstack[i].user_data);
-    }
+	tagstack_clear_entry(&wp->w_tagstack[i]);
     vim_free(wp->w_localdir);
     vim_free(wp->w_prevdir);
 
@@ -7846,7 +7855,7 @@ get_win_number(win_T *wp, win_T *first_win)
 }
 
     int
-get_tab_number(tabpage_T *tp UNUSED)
+get_tab_number(tabpage_T *tp)
 {
     int		i = 1;
     tabpage_T	*t;
@@ -7916,23 +7925,38 @@ int_cmp(const void *pa, const void *pb)
 }
 
 /*
- * Handle setting 'colorcolumn' or 'textwidth' in window "wp".
+ * Check "cc" as 'colorcolumn' and update the members of "wp".
+ * This is called when 'colorcolumn' or 'textwidth' is changed.
  * Returns error message, NULL if it's OK.
  */
     char *
-check_colorcolumn(win_T *wp)
+check_colorcolumn(
+    char_u *cc,		// when NULL: use "wp->w_p_cc"
+    win_T *wp)		// when NULL: only parse "cc"
 {
-    char_u	*s;
+    char_u	*s = empty_option;
+    int		tw;
     int		col;
     int		count = 0;
     int		color_cols[256];
     int		i;
     int		j = 0;
 
-    if (wp->w_buffer == NULL)
+    if (wp != NULL && wp->w_buffer == NULL)
 	return NULL;  // buffer was closed
 
-    for (s = wp->w_p_cc; *s != NUL && count < 255;)
+    if (cc != NULL)
+	s = cc;
+    else if (wp != NULL)
+	s = wp->w_p_cc;
+
+    if (wp != NULL)
+	tw = wp->w_buffer->b_p_tw;
+    else
+	// buffer-local value not set, assume zero
+	tw = 0;
+
+    while (*s != NUL && count < 255)
     {
 	if (*s == '-' || *s == '+')
 	{
@@ -7942,9 +7966,9 @@ check_colorcolumn(win_T *wp)
 	    if (!VIM_ISDIGIT(*s))
 		return e_invalid_argument;
 	    col = col * getdigits(&s);
-	    if (wp->w_buffer->b_p_tw == 0)
+	    if (tw == 0)
 		goto skip;  // 'textwidth' not set, skip this item
-	    col += wp->w_buffer->b_p_tw;
+	    col += tw;
 	    if (col < 0)
 		goto skip;
 	}
@@ -7961,6 +7985,9 @@ skip:
 	if (*++s == NUL)
 	    return e_invalid_argument;  // illegal trailing comma as in "set cc=80,"
     }
+
+    if (wp == NULL)
+	return NULL;  // only parse "cc"
 
     vim_free(wp->w_p_cc_cols);
     if (count == 0)
@@ -7990,4 +8017,13 @@ skip:
 get_last_winid(void)
 {
     return last_win_id;
+}
+
+/*
+ * Don't let autocommands close the given window
+ */
+   int
+win_locked(win_T *wp)
+{
+    return wp->w_locked;
 }

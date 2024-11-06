@@ -678,17 +678,6 @@ get_mode(char_u *buf)
 	buf[i++] = 't';
     }
 #endif
-    else if (VIsual_active)
-    {
-	if (VIsual_select)
-	    buf[i++] = VIsual_mode + 's' - 'v';
-	else
-	{
-	    buf[i++] = VIsual_mode;
-	    if (restart_VIsual_select)
-		buf[i++] = 's';
-	}
-    }
     else if (State == MODE_HITRETURN || State == MODE_ASKMORE
 						      || State == MODE_SETWSIZE
 		|| State == MODE_CONFIRM)
@@ -730,6 +719,17 @@ get_mode(char_u *buf)
 	    buf[i++] = 'e';
 	if ((State & MODE_CMDLINE) && cmdline_overstrike())
 	    buf[i++] = 'r';
+    }
+    else if (VIsual_active)
+    {
+	if (VIsual_select)
+	    buf[i++] = VIsual_mode + 's' - 'v';
+	else
+	{
+	    buf[i++] = VIsual_mode;
+	    if (restart_VIsual_select)
+		buf[i++] = 's';
+	}
     }
     else
     {
@@ -951,6 +951,17 @@ get_keystroke(void)
 
     mapped_ctrl_c = save_mapped_ctrl_c;
     return n;
+}
+
+// For overflow detection, add a digit safely to an int value.
+    static int
+vim_append_digit_int(int *value, int digit)
+{
+    int x = *value;
+    if (x > ((INT_MAX - digit) / 10))
+	return FAIL;
+    *value = x * 10 + digit;
+    return OK;
 }
 
 /*
@@ -2822,17 +2833,6 @@ may_trigger_modechanged(void)
 
     restore_v_event(v_event, &save_v_event);
 #endif
-}
-
-// For overflow detection, add a digit safely to an int value.
-    int
-vim_append_digit_int(int *value, int digit)
-{
-    int x = *value;
-    if (x > ((INT_MAX - digit) / 10))
-	return FAIL;
-    *value = x * 10 + digit;
-    return OK;
 }
 
 // For overflow detection, add a digit safely to a long value.

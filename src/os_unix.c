@@ -2699,6 +2699,9 @@ mch_FullName(
     if ((force || !mch_isFullName(fname))
 	    && ((p = vim_strrchr(fname, '/')) == NULL || p != fname))
     {
+	if (p == NULL && STRCMP(fname, "..") == 0)
+	    // Handle ".." without path separators.
+	    p = fname + 2;
 	/*
 	 * If the file name has a path, change to that directory for a moment,
 	 * and then get the directory (and get back to where we were).
@@ -2707,7 +2710,7 @@ mch_FullName(
 	if (p != NULL)
 	{
 	    if (STRCMP(p, "/..") == 0)
-		// for "/path/dir/.." include the "/.."
+		// For "/path/dir/.." include the "/..".
 		p += 3;
 
 #ifdef HAVE_FCHDIR
@@ -5760,8 +5763,11 @@ mch_job_start(char **argv, job_T *job, jobopt_T *options, int is_terminal)
 	    goto failed;
 	}
     }
+    // only create a pipe for the error fd, when either a callback has been setup
+    // or pty is not used (e.g. terminal uses pty by default)
     else if (!use_out_for_err && !use_null_for_err
-				      && pty_master_fd < 0 && pipe(fd_err) < 0)
+		&& (pty_master_fd < 0 || (options->jo_set & JO_ERR_CALLBACK))
+			    && pipe(fd_err) < 0)
 	goto failed;
 
     if (!use_null_for_in || !use_null_for_out || !use_null_for_err)
@@ -7498,9 +7504,9 @@ gpm_open(void)
     {
 	Gpm_Close(); // We don't want to talk to xterm via gpm
 
-        // Gpm_Close fails to properly restore the WINCH and TSTP handlers,
-        // leading to Vim ignoring resize signals. We have to re-initialize
-        // these handlers again here.
+	// Gpm_Close fails to properly restore the WINCH and TSTP handlers,
+	// leading to Vim ignoring resize signals. We have to re-initialize
+	// these handlers again here.
 # ifdef SIGWINCH
 	mch_signal(SIGWINCH, sig_winch);
 # endif
@@ -7721,6 +7727,37 @@ sig_sysmouse SIGDEFARG(sigarg)
     return;
 }
 #endif // FEAT_SYSMOUSE
+
+/*
+ * Fill the buffer 'buf' with 'len' random bytes.
+ * Returns FAIL if the OS PRNG is not available or something went wrong.
+ */
+    int
+mch_get_random(char_u *buf, int len)
+{
+    static int dev_urandom_state = NOTDONE;
+
+    if (dev_urandom_state == FAIL)
+	return FAIL;
+
+    int fd = open("/dev/urandom", O_RDONLY);
+
+    // Attempt reading /dev/urandom.
+    if (fd == -1)
+	dev_urandom_state = FAIL;
+    else if (read(fd, buf, len) == len)
+    {
+	dev_urandom_state = OK;
+	close(fd);
+    }
+    else
+    {
+	dev_urandom_state = FAIL;
+	close(fd);
+    }
+
+    return dev_urandom_state;
+}
 
 #if defined(FEAT_LIBCALL) || defined(PROTO)
 typedef char_u * (*STRPROCSTR)(char_u *);

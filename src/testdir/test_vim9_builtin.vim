@@ -497,6 +497,56 @@ def Test_call_call()
   v9.CheckSourceDefAndScriptFailure(['call("reverse", [2], [1])'], ['E1013: Argument 3: type mismatch, expected dict<any> but got list<number>', 'E1206: Dictionary required for argument 3'])
 enddef
 
+def Test_call_imports()
+  # Use call with an imported function
+  var lines =<< trim END
+    vim9script
+
+    export const foo = 'foo'
+
+    export def Imported()
+    enddef
+
+    var count: number
+    export def ImportedListArg(l: list<number>)
+      count += 1
+      l[0] += count
+    enddef
+  END
+  writefile(lines, 'Test_call_imports_importme', 'D')
+  lines =<< trim END
+    vim9script
+    import './Test_call_imports_importme' as i_imp
+
+    var l = [12]
+    call('i_imp.ImportedListArg', [l])
+    assert_equal(13, l[0])
+    const ImportedListArg = i_imp.ImportedListArg
+    call('ImportedListArg', [l])
+    assert_equal(15, l[0])
+    const Imported = i_imp.Imported
+    call("Imported", [])
+
+    assert_equal('foo', i_imp.foo)
+    const foo = i_imp.foo
+    assert_equal('foo', foo)
+  END
+  v9.CheckSourceScriptSuccess(lines)
+
+  # A few error cases
+  lines =<< trim END
+    vim9script
+    import './Test_call_imports_importme' as i_imp
+    const Imported = i_imp.Imported
+    const foo = i_imp.foo
+
+    assert_fails('call("i_imp.foo", [])', 'E117:') # foo is not a function
+    assert_fails('call("foo", [])', 'E117:') # foo is not a function
+    assert_fails('call("i_xxx.foo", [])', 'E117:') # i_xxx not imported file
+  END
+  v9.CheckSourceScriptSuccess(lines)
+enddef
+
 def Test_ch_canread()
   if !has('channel')
     CheckFeature channel
@@ -1969,6 +2019,17 @@ def Test_getreginfo()
   getreginfo('').regcontents->assert_equal(['D1E2F3'])
 enddef
 
+def Test_getregionpos()
+  var lines =<< trim END
+    cursor(1, 1)
+    var pos = getregionpos(getpos('.'), getpos('$'))
+    for p in pos
+      assert_equal(bufnr('%'), p[0][0])
+    endfor
+  END
+  v9.CheckSourceDefSuccess(lines)
+enddef
+
 def Test_getregtype()
   var lines = ['aaa', 'bbb', 'ccc']
   setreg('a', lines)
@@ -3150,6 +3211,11 @@ enddef
 def Test_popup_settext()
   v9.CheckSourceDefAndScriptFailure(['popup_settext("x", [])'], ['E1013: Argument 1: type mismatch, expected number but got string', 'E1210: Number required for argument 1'])
   v9.CheckSourceDefAndScriptFailure(['popup_settext(1, 2)'], ['E1013: Argument 2: type mismatch, expected string but got number', 'E1222: String or List required for argument 2'])
+enddef
+
+def Test_popup_setbuf()
+  v9.CheckSourceDefAndScriptFailure(['popup_setbuf([], "abc")'], ['E1013: Argument 1: type mismatch, expected number but got list<any>', 'E1210: Number required for argument 1'])
+  v9.CheckSourceDefAndScriptFailure(['popup_setbuf(1, [])'], ['E1013: Argument 2: type mismatch, expected string but got list<any>', 'E1220: String or Number required for argument 2'])
 enddef
 
 def Test_popup_show()
@@ -4557,6 +4623,7 @@ enddef
 def Test_term_getjob()
   CheckRunVimInTerminal
   v9.CheckSourceDefAndScriptFailure(['term_getjob(0z10)'], ['E1013: Argument 1: type mismatch, expected string but got blob', 'E1220: String or Number required for argument 1'])
+  v9.CheckSourceDefAndScriptSuccess(['assert_true(term_getjob(0) == null_job)'])
 enddef
 
 def Test_term_getline()

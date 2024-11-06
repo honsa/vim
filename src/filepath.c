@@ -2649,6 +2649,31 @@ f_browsedir(typval_T *argvars UNUSED, typval_T *rettv)
     rettv->v_type = VAR_STRING;
 }
 
+/*
+ * "filecopy()" function
+ */
+    void
+f_filecopy(typval_T *argvars, typval_T *rettv)
+{
+    char_u	*from;
+    stat_T	st;
+
+    rettv->vval.v_number = FALSE;
+
+    if (check_restricted() || check_secure()
+	|| check_for_string_arg(argvars, 0) == FAIL
+	|| check_for_string_arg(argvars, 1) == FAIL)
+	return;
+
+    from = tv_get_string(&argvars[0]);
+
+    if (mch_lstat((char *)from, &st) >= 0
+	&& (S_ISREG(st.st_mode) || S_ISLNK(st.st_mode)))
+	rettv->vval.v_number = vim_copyfile(
+	    tv_get_string(&argvars[0]),
+	    tv_get_string(&argvars[1])) == OK ? TRUE : FALSE;
+}
+
 #endif // FEAT_EVAL
 
 /*
@@ -3620,11 +3645,15 @@ dos_expandpath(
 	    }
 	    else
 	    {
+		stat_T  sb;
+
 		// no more wildcards, check if there is a match
 		// remove backslashes for the remaining components only
 		if (*path_end != 0)
 		    backslash_halve(buf + len + 1);
-		if (mch_getperm(buf) >= 0)	// add existing file
+		// add existing file
+		if ((flags & EW_ALLLINKS) ? mch_lstat((char *)buf, &sb) >= 0
+			: mch_getperm(buf) >= 0)
 		    addfile(gap, buf, flags);
 	    }
 	}
@@ -3974,6 +4003,8 @@ gen_expand_wildcards(
     int			add_pat;
     int			retval = OK;
     int			did_expand_in_path = FALSE;
+    char_u		*path_option = *curbuf->b_p_path == NUL ?
+					p_path : curbuf->b_p_path;
 
     /*
      * expand_env() is called to expand things like "~user".  If this fails,
@@ -4063,7 +4094,7 @@ gen_expand_wildcards(
 	     */
 	    if (mch_has_exp_wildcard(p) || (flags & EW_ICASE))
 	    {
-		if ((flags & EW_PATH)
+		if ((flags & (EW_PATH | EW_CDPATH))
 			&& !mch_isFullName(p)
 			&& !(p[0] == '.'
 			    && (vim_ispathsep(p[1])
@@ -4097,8 +4128,8 @@ gen_expand_wildcards(
 		vim_free(t);
 	}
 
-	if (did_expand_in_path && ga.ga_len > 0 && (flags & EW_PATH))
-	    uniquefy_paths(&ga, p);
+	if (did_expand_in_path && ga.ga_len > 0 && (flags & (EW_PATH | EW_CDPATH)))
+	    uniquefy_paths(&ga, p, path_option);
 	if (p != pat[i])
 	    vim_free(p);
     }

@@ -39,29 +39,30 @@ margin_columns_win(win_T *wp, int *left_col, int *right_col)
     // cache previous calculations depending on w_virtcol
     static int saved_w_virtcol;
     static win_T *prev_wp;
+    static int prev_width1;
+    static int prev_width2;
     static int prev_left_col;
     static int prev_right_col;
-    static int prev_col_off;
 
     int cur_col_off = win_col_off(wp);
     int	width1;
     int	width2;
 
-    if (saved_w_virtcol == wp->w_virtcol
-	    && prev_wp == wp && prev_col_off == cur_col_off)
+    width1 = wp->w_width - cur_col_off;
+    width2 = width1 + win_col_off2(wp);
+
+    if (saved_w_virtcol == wp->w_virtcol && prev_wp == wp
+	    && prev_width1 == width1 && prev_width2 == width2)
     {
 	*right_col = prev_right_col;
 	*left_col = prev_left_col;
 	return;
     }
 
-    width1 = wp->w_width - cur_col_off;
-    width2 = width1 + win_col_off2(wp);
-
     *left_col = 0;
     *right_col = width1;
 
-    if (wp->w_virtcol >= (colnr_T)width1)
+    if (wp->w_virtcol >= (colnr_T)width1 && width2 > 0)
 	*right_col = width1 + ((wp->w_virtcol - width1) / width2 + 1) * width2;
     if (wp->w_virtcol >= (colnr_T)width1 && width2 > 0)
 	*left_col = (wp->w_virtcol - width1) / width2 * width2 + width1;
@@ -70,8 +71,9 @@ margin_columns_win(win_T *wp, int *left_col, int *right_col)
     prev_left_col = *left_col;
     prev_right_col = *right_col;
     prev_wp = wp;
+    prev_width1 = width1;
+    prev_width2 = width2;
     saved_w_virtcol = wp->w_virtcol;
-    prev_col_off = cur_col_off;
 }
 #endif
 
@@ -296,10 +298,9 @@ get_sign_display_info(
 	    if (nrcol)
 	    {
 		wlv->c_extra = NUL;
-		sprintf((char *)wlv->extra, "%-*c ",
-						  number_width(wp), SIGN_BYTE);
+		wlv->n_extra = vim_snprintf((char *)wlv->extra, sizeof(wlv->extra),
+						"%-*c ", number_width(wp), SIGN_BYTE);
 		wlv->p_extra = wlv->extra;
-		wlv->n_extra = (int)STRLEN(wlv->p_extra);
 	    }
 	    else
 		wlv->c_extra = SIGN_BYTE;
@@ -310,10 +311,9 @@ get_sign_display_info(
 		if (nrcol)
 		{
 		    wlv->c_extra = NUL;
-		    sprintf((char *)wlv->extra, "%-*c ", number_width(wp),
-							MULTISIGN_BYTE);
+		    wlv->n_extra = vim_snprintf((char *)wlv->extra, sizeof(wlv->extra),
+						"%-*c ", number_width(wp), MULTISIGN_BYTE);
 		    wlv->p_extra = wlv->extra;
-		    wlv->n_extra = (int)STRLEN(wlv->p_extra);
 		}
 		else
 		    wlv->c_extra = MULTISIGN_BYTE;
@@ -332,17 +332,18 @@ get_sign_display_info(
 		    if (nrcol)
 		    {
 			int width = number_width(wp) - 2;
-			int n;
 
-			for (n = 0; n < width; n++)
-			    wlv->extra[n] = ' ';
-			vim_snprintf((char *)wlv->extra + n,
-				  sizeof(wlv->extra) - n, "%s ", wlv->p_extra);
+			vim_memset(wlv->extra, ' ', width);
+			wlv->n_extra = width;
+			wlv->n_extra += vim_snprintf((char *)wlv->extra + width,
+				  sizeof(wlv->extra) - width, "%s ", wlv->p_extra);
 			wlv->p_extra = wlv->extra;
 		    }
+		    else
+			wlv->n_extra = (int)STRLEN(wlv->p_extra);
+
 		    wlv->c_extra = NUL;
 		    wlv->c_final = NUL;
-		    wlv->n_extra = (int)STRLEN(wlv->p_extra);
 		}
 
 		if (use_cursor_line_highlight(wp, wlv->lnum)
@@ -417,7 +418,7 @@ handle_lnum_col(
 		  }
 	      }
 
-	      sprintf((char *)wlv->extra, fmt, number_width(wp), num);
+	      vim_snprintf((char *)wlv->extra, sizeof(wlv->extra), fmt, number_width(wp), num);
 	      if (wp->w_skipcol > 0 && wlv->startrow == 0)
 		  for (wlv->p_extra = wlv->extra; *wlv->p_extra == ' ';
 			  ++wlv->p_extra)
@@ -621,25 +622,26 @@ textprop_size_after_trunc(
 {
     int	space = (flags & (TP_FLAG_ALIGN_BELOW | TP_FLAG_ALIGN_ABOVE))
 				       ? wp->w_width - win_col_off(wp) : added;
-    int len = (int)STRLEN(text);
     int strsize = 0;
-    int n_used;
+    char_u *p;
 
-    // if the remaining size is to small and 'wrap' is set we wrap anyway and
+    // if the remaining size is too small and 'wrap' is set we wrap anyway and
     // use the next line
     if (space < PROP_TEXT_MIN_CELLS && wp->w_p_wrap)
 	space += wp->w_width;
     if (flags & (TP_FLAG_ALIGN_BELOW | TP_FLAG_ALIGN_ABOVE))
 	space -= padding;
-    for (n_used = 0; n_used < len; n_used += (*mb_ptr2len)(text + n_used))
+
+    for (p = text; *p != NUL; p += (*mb_ptr2len)(p))
     {
-	int clen = ptr2cells(text + n_used);
+	int clen = ptr2cells(p);
 
 	if (strsize + clen > space)
 	    break;
 	strsize += clen;
     }
-    *n_used_ptr = n_used;
+    *n_used_ptr = (int)(p - text);
+
     return strsize;
 }
 
@@ -1807,7 +1809,7 @@ win_line(
 	    line = ml_get_buf(wp->w_buffer, lnum, FALSE);
 	    ptr = line + linecol;
 
-	    if (len == 0 || (int)wp->w_cursor.col > ptr - line)
+	    if (len == 0 || (int)wp->w_cursor.col > linecol)
 	    {
 		// no bad word found at line start, don't check until end of a
 		// word
@@ -2261,7 +2263,7 @@ win_line(
 				}
 
 				if (above)
-				    wlv.vcol_off_tp = wlv.n_extra;
+				    wlv.vcol_off_tp = vim_strsize(wlv.p_extra);
 
 				if (lcs_eol_one < 0
 					&& wp->w_p_wrap
@@ -2821,15 +2823,16 @@ win_line(
 				// head byte at end of line
 				mb_l = 1;
 				transchar_nonprint(wp->w_buffer, wlv.extra, c);
+				wlv.n_extra = (int)STRLEN(wlv.extra) - 1;
 			    }
 			    else
 			    {
 				// illegal tail byte
 				mb_l = 2;
 				STRCPY(wlv.extra, "XX");
+				wlv.n_extra = 1;
 			    }
 			    wlv.p_extra = wlv.extra;
-			    wlv.n_extra = (int)STRLEN(wlv.extra) - 1;
 			    wlv.c_extra = NUL;
 			    wlv.c_final = NUL;
 			    c = *wlv.p_extra++;
@@ -3388,11 +3391,16 @@ win_line(
 
 			c = *wlv.p_extra;
 			p = alloc(wlv.n_extra + 1);
-			vim_memset(p, ' ', wlv.n_extra);
-			STRNCPY(p, wlv.p_extra + 1, STRLEN(wlv.p_extra) - 1);
-			p[wlv.n_extra] = NUL;
-			vim_free(wlv.p_extra_free);
-			wlv.p_extra_free = wlv.p_extra = p;
+			if (p == NULL)
+			    wlv.n_extra = 0;
+			else
+			{
+			    vim_memset(p, ' ', wlv.n_extra);
+			    STRNCPY(p, wlv.p_extra + 1, STRLEN(wlv.p_extra) - 1);
+			    p[wlv.n_extra] = NUL;
+			    vim_free(wlv.p_extra_free);
+			    wlv.p_extra_free = wlv.p_extra = p;
+			}
 		    }
 		    else
 #endif
@@ -4251,7 +4259,7 @@ win_line(
 	    if (!wp->w_p_wrap && text_prop_follows && !text_prop_above)
 	    {
 		// do not output more of the line, only the "below" prop
-		ptr += STRLEN(ptr);
+		ptr = line + (size_t)ml_get_buf_len(wp->w_buffer, lnum);
 # ifdef FEAT_LINEBREAK
 		wlv.dont_use_showbreak = TRUE;
 # endif

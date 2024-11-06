@@ -277,17 +277,17 @@ func Test_strftime()
     let tz = $TZ
   endif
 
-  " Force EST and then UTC, save the current hour (24-hour clock) for each
-  let $TZ = 'EST' | let est = strftime('%H')
-  let $TZ = 'UTC' | let utc = strftime('%H')
+  " Force different time zones, save the current hour (24-hour clock) for each
+  let $TZ = 'GMT+1' | let one = strftime('%H')
+  let $TZ = 'GMT+2' | let two = strftime('%H')
 
   " Those hours should be two bytes long, and should not be the same; if they
   " are, a tzset(3) call may have failed somewhere
-  call assert_equal(strlen(est), 2)
-  call assert_equal(strlen(utc), 2)
+  call assert_equal(strlen(one), 2)
+  call assert_equal(strlen(two), 2)
   " TODO: this fails on MS-Windows
   if has('unix')
-    call assert_notequal(est, utc)
+    call assert_notequal(one, two)
   endif
 
   " If we cached a timezone value, put it back, otherwise clear it
@@ -922,6 +922,10 @@ func Test_mode()
   call assert_equal('c-cv', g:current_modes)
   call feedkeys("gQ\<Insert>\<F2>vi\<CR>", 'xt')
   call assert_equal("c-cvr", g:current_modes)
+
+  " Commandline mode in Visual mode should return "c-c", never "v-v".
+  call feedkeys("v\<Cmd>call input('')\<CR>\<F2>\<CR>\<Esc>", 'xt')
+  call assert_equal("c-c", g:current_modes)
 
   " Executing commands in Vim Ex mode should return "cv", never "cvr",
   " as Cmdline editing has already ended.
@@ -3412,7 +3416,7 @@ func Test_range()
     call assert_fails('call term_start(range(3, 4))', 'E474:')
     let g:terminal_ansi_colors = range(16)
     if has('win32')
-      let cmd = "cmd /c dir"
+      let cmd = "cmd /D /c dir"
     else
       let cmd = "ls"
     endif
@@ -3795,6 +3799,56 @@ func Test_glob()
   call assert_fails("call glob('*', 0, {})", 'E728:')
 endfunc
 
+func Test_glob2()
+  call mkdir('[XglobDir]', 'R')
+  call mkdir('abc[glob]def', 'R')
+
+  call writefile(['glob'], '[XglobDir]/Xglob')
+  call writefile(['glob'], 'abc[glob]def/Xglob')
+  if has("unix")
+    call assert_equal([], (glob('[XglobDir]/*', 0, 1)))
+    call assert_equal([], (glob('abc[glob]def/*', 0, 1)))
+    call assert_equal(['[XglobDir]/Xglob'], (glob('\[XglobDir]/*', 0, 1)))
+    call assert_equal(['abc[glob]def/Xglob'], (glob('abc\[glob]def/*', 0, 1)))
+  elseif has("win32")
+    let _sl=&shellslash
+    call assert_equal([], (glob('[XglobDir]\*', 0, 1)))
+    call assert_equal([], (glob('abc[glob]def\*', 0, 1)))
+    call assert_equal([], (glob('\[XglobDir]\*', 0, 1)))
+    call assert_equal([], (glob('abc\[glob]def\*', 0, 1)))
+    set noshellslash
+    call assert_equal(['[XglobDir]\Xglob'], (glob('[[]XglobDir]/*', 0, 1)))
+    call assert_equal(['abc[glob]def\Xglob'], (glob('abc[[]glob]def/*', 0, 1)))
+    set shellslash
+    call assert_equal(['[XglobDir]/Xglob'], (glob('[[]XglobDir]/*', 0, 1)))
+    call assert_equal(['abc[glob]def/Xglob'], (glob('abc[[]glob]def/*', 0, 1)))
+    let &shellslash=_sl
+  endif
+endfunc
+
+func Test_glob_symlinks()
+  call writefile([], 'Xglob1')
+
+  if has("win32")
+    silent !mklink XglobBad DoesNotExist
+    if v:shell_error
+      throw 'Skipped: cannot create symlinks'
+    endif
+    silent !mklink XglobOk Xglob1
+  else
+    silent !ln -s DoesNotExist XglobBad
+    silent !ln -s Xglob1 XglobOk
+  endif
+
+  " The broken symlink is excluded when alllinks is false.
+  call assert_equal(['Xglob1', 'XglobBad', 'XglobOk'], sort(glob('Xglob*', 0, 1, 1)))
+  call assert_equal(['Xglob1', 'XglobOk'], sort(glob('Xglob*', 0, 1, 0)))
+
+  call delete('Xglob1')
+  call delete('XglobBad')
+  call delete('XglobOk')
+endfunc
+
 " Test for browse()
 func Test_browse()
   CheckFeature browse
@@ -3813,11 +3867,6 @@ endfunc
 
 func Test_default_arg_value()
   call assert_equal('msg', HasDefault())
-endfunc
-
-" Test for gettext()
-func Test_gettext()
-  call assert_fails('call gettext(1)', 'E1174:')
 endfunc
 
 func Test_builtin_check()

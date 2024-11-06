@@ -50,6 +50,7 @@ static void	free_buffer(buf_T *);
 static void	free_buffer_stuff(buf_T *buf, int free_options);
 static int	bt_nofileread(buf_T *buf);
 static void	no_write_message_buf(buf_T *buf);
+static int	do_buffer_ext(int action, int start, int dir, int count, int flags);
 
 #ifdef UNIX
 # define dev_T dev_t
@@ -213,7 +214,7 @@ open_buffer(
 	enter_buffer(curbuf);
 #ifdef FEAT_SYN_HL
 	if (old_tw != curbuf->b_p_tw)
-	    check_colorcolumn(curwin);
+	    check_colorcolumn(NULL, curwin);
 #endif
 	return FAIL;
     }
@@ -496,6 +497,12 @@ can_unload_buffer(buf_T *buf)
     return can_unload;
 }
 
+    int
+buf_locked(buf_T *buf)
+{
+    return buf->b_locked || buf->b_locked_split;
+}
+
 /*
  * Close the link to a buffer.
  * "action" is used when there is no longer a window for the buffer.
@@ -750,9 +757,15 @@ aucmd_abort:
      */
     if (wipe_buf)
     {
+	tabpage_T	*tp;
+	win_T		*wp;
+
 	// Do not wipe out the buffer if it is used in a window.
 	if (buf->b_nwindows > 0)
 	    return FALSE;
+
+	FOR_ALL_TAB_WINDOWS(tp, wp)
+	    mark_forget_file(wp, buf->b_fnum);
 
 	if (action == DOBUF_WIPE_REUSE)
 	{
@@ -1100,13 +1113,30 @@ goto_buffer(
 {
     bufref_T	old_curbuf;
     int		save_sea = swap_exists_action;
+    int		skip_help_buf;
+
+    switch (eap->cmdidx)
+    {
+	case CMD_bnext:
+	case CMD_sbnext:
+	case CMD_bNext:
+	case CMD_bprevious:
+	case CMD_sbNext:
+	case CMD_sbprevious:
+	    skip_help_buf = TRUE;
+	    break;
+	default:
+	    skip_help_buf = FALSE;
+	    break;
+    }
 
     set_bufref(&old_curbuf, curbuf);
 
     if (swap_exists_action == SEA_NONE)
 	swap_exists_action = SEA_DIALOG;
-    (void)do_buffer(*eap->cmd == 's' ? DOBUF_SPLIT : DOBUF_GOTO,
-					     start, dir, count, eap->forceit);
+    (void)do_buffer_ext(*eap->cmd == 's' ? DOBUF_SPLIT : DOBUF_GOTO, start, dir, count,
+	    (eap->forceit ? DOBUF_FORCEIT : 0) |
+	    (skip_help_buf ? DOBUF_SKIPHELP : 0));
     if (swap_exists_action == SEA_QUIT && *eap->cmd == 's')
     {
 #if defined(FEAT_EVAL)
@@ -1183,7 +1213,7 @@ handle_swap_exists(bufref_T *old_curbuf)
 
 #ifdef FEAT_SYN_HL
 	    if (old_tw != curbuf->b_p_tw)
-		check_colorcolumn(curwin);
+		check_colorcolumn(NULL, curwin);
 #endif
 	}
 	// If "old_curbuf" is NULL we are in big trouble here...
@@ -1337,8 +1367,11 @@ do_buffer_ext(
 		if (buf == NULL)
 		    buf = lastbuf;
 	    }
-	    // don't count unlisted buffers
-	    if (unload || buf->b_p_bl)
+	    // Don't count unlisted buffers.
+	    // Avoid non-help buffers if the starting point was a non-help buffer and
+	    // vice-versa.
+	    if (unload || (buf->b_p_bl
+			&& ((flags & DOBUF_SKIPHELP) == 0 || buf->b_help == bp->b_help)))
 	    {
 		 --count;
 		 bp = NULL;	// use this buffer as new starting point
@@ -1457,7 +1490,7 @@ do_buffer_ext(
 	// (unless it's the only window).  Repeat this so long as we end up in
 	// a window with this buffer.
 	while (buf == curbuf
-		   && !(curwin->w_closing || curwin->w_buffer->b_locked > 0)
+		   && !(win_locked(curwin) || curwin->w_buffer->b_locked > 0)
 		   && (!ONE_WINDOW || first_tabpage->tp_next != NULL))
 	{
 	    if (win_close(curwin, FALSE) == FAIL)
@@ -1878,7 +1911,7 @@ set_curbuf(buf_T *buf, int action)
 	    enter_buffer(buf);
 #ifdef FEAT_SYN_HL
 	if (old_tw != curbuf->b_p_tw)
-	    check_colorcolumn(curwin);
+	    check_colorcolumn(NULL, curwin);
 #endif
     }
 }
@@ -2429,6 +2462,7 @@ free_buf_options(
     clear_string_option(&buf->b_p_lop);
     clear_string_option(&buf->b_p_cinsd);
     clear_string_option(&buf->b_p_cinw);
+    clear_string_option(&buf->b_p_cot);
     clear_string_option(&buf->b_p_cpt);
 #ifdef FEAT_COMPL_FUNC
     clear_string_option(&buf->b_p_cfu);
@@ -2450,6 +2484,8 @@ free_buf_options(
 #ifdef FEAT_EVAL
     clear_string_option(&buf->b_p_tfu);
     free_callback(&buf->b_tfu_cb);
+    clear_string_option(&buf->b_p_ffu);
+    free_callback(&buf->b_ffu_cb);
 #endif
     clear_string_option(&buf->b_p_dict);
     clear_string_option(&buf->b_p_tsr);
@@ -5442,7 +5478,7 @@ ex_buffer_all(exarg_T *eap)
 			    : wp->w_width != Columns)
 			|| (had_tab > 0 && wp != firstwin))
 		    && !ONE_WINDOW
-		    && !(wp->w_closing || wp->w_buffer->b_locked > 0)
+		    && !(win_locked(wp) || wp->w_buffer->b_locked > 0)
 		    && !win_unlisted(wp))
 	    {
 		if (win_close(wp, FALSE) == FAIL)

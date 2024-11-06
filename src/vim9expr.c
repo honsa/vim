@@ -349,6 +349,11 @@ compile_class_object_index(cctx_T *cctx, char_u **arg, type_T *type)
 	else
 	{
 	    // type->tt_type == VAR_OBJECT: method call
+	    // When compiling Func and doing "super.SomeFunc()", must be in the
+	    // class context that defines Func.
+	    if (is_super)
+		cl = cctx->ctx_ufunc->uf_defclass;
+
 	    function_count = cl->class_obj_method_count;
 	    child_count = cl->class_obj_method_count_child;
 	    functions = cl->class_obj_methods;
@@ -419,13 +424,13 @@ compile_class_object_index(cctx_T *cctx, char_u **arg, type_T *type)
 	    return generate_PCALL(cctx, argcount, name, ocm->ocm_type, TRUE);
 	if (type->tt_type == VAR_OBJECT
 		     && (cl->class_flags & (CLASS_INTERFACE | CLASS_EXTENDED)))
-	    return generate_CALL(cctx, ufunc, cl, fi, argcount);
-	return generate_CALL(cctx, ufunc, NULL, 0, argcount);
+	    return generate_CALL(cctx, ufunc, cl, fi, argcount, is_super);
+	return generate_CALL(cctx, ufunc, NULL, 0, argcount, FALSE);
     }
 
     if (type->tt_type == VAR_OBJECT)
     {
-        ocmember_T *m = object_member_lookup(cl, name, len, &m_idx);
+	ocmember_T *m = object_member_lookup(cl, name, len, &m_idx);
 	if (m_idx >= 0)
 	{
 	    if (*name == '_' && !inside_class(cctx, cl))
@@ -1035,7 +1040,7 @@ compile_builtin_method_call(cctx_T *cctx, class_builtin_T builtin_method)
 	ufunc_T *uf = class_get_builtin_method(type->tt_class, builtin_method,
 							&method_idx);
 	if (uf != NULL)
-	    res = generate_CALL(cctx, uf, type->tt_class, method_idx, 0);
+	    res = generate_CALL(cctx, uf, type->tt_class, method_idx, 0, FALSE);
     }
 
     return res;
@@ -1238,7 +1243,7 @@ compile_call(
 	{
 	    if (!func_is_global(ufunc))
 	    {
-		res = generate_CALL(cctx, ufunc, NULL, 0, argcount);
+		res = generate_CALL(cctx, ufunc, NULL, 0, argcount, FALSE);
 		goto theend;
 	    }
 	    if (!has_g_namespace
@@ -1257,7 +1262,7 @@ compile_call(
 	    if (cctx->ctx_ufunc->uf_defclass == cl)
 	    {
 		res = generate_CALL(cctx, cl->class_class_functions[mi], NULL,
-							0, argcount);
+							0, argcount, FALSE);
 	    }
 	    else
 	    {
@@ -1285,7 +1290,7 @@ compile_call(
     // If we can find a global function by name generate the right call.
     if (ufunc != NULL)
     {
-	res = generate_CALL(cctx, ufunc, NULL, 0, argcount);
+	res = generate_CALL(cctx, ufunc, NULL, 0, argcount, FALSE);
 	goto theend;
     }
 
@@ -2836,12 +2841,13 @@ compile_expr8(char_u **arg, cctx_T *cctx, ppconst_T *ppconst)
 	type_T	    *actual;
 	where_T	    where = WHERE_INIT;
 
+	where.wt_kind = WT_CAST;
 	generate_ppconst(cctx, ppconst);
 	actual = get_type_on_stack(cctx, 0);
 	if (check_type_maybe(want_type, actual, FALSE, where) != OK)
 	{
-	    if (need_type(actual, want_type, FALSE,
-					    -1, 0, cctx, FALSE, FALSE) == FAIL)
+	    if (need_type_where(actual, want_type, FALSE, -1, where, cctx, FALSE, FALSE)
+		    == FAIL)
 		return FAIL;
 	}
     }
